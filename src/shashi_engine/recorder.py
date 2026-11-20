@@ -79,9 +79,11 @@ class AppendOnlyJsonlRecorder:
                         try:
                             parsed = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
                             _utc(parsed, "candle_start_utc")
+                            if parsed.minute not in (0, 30) or parsed.second or parsed.microsecond:
+                                raise ValueError("canonical candle start is not UTC half-hour aligned")
                         except (ValueError, TypeError) as exc:
                             raise RecorderError(f"invalid candle start at line {line_number}") from exc
-                        self._known_starts.add(stamp)
+                        self._known_starts.add(parsed.isoformat())
                         if self._latest_start is None or parsed > self._latest_start:
                             self._latest_start = parsed
         except OSError as exc:
@@ -106,14 +108,15 @@ class AppendOnlyJsonlRecorder:
                     os.fsync(handle.fileno())
             except OSError as exc:
                 raise RecorderError(f"cannot append local record: {exc}") from exc
+    
     def append_candle(self, candle: Candle, *, record_type: str, source: str) -> bool:
         """Append a canonical candle once; return False when already recorded."""
+        payload = candle_record(candle, record_type=record_type, source=source)
         stamp = candle.start_time.isoformat()
         with self._lock:
             if stamp in self._known_starts:
                 return False
             # Keep the lock through append to make the check-and-append atomic.
-            payload = candle_record(candle, record_type=record_type, source=source)
             payload.setdefault("recorded_at_utc", datetime.now(timezone.utc).isoformat())
             line = json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False)
             try:
@@ -134,8 +137,9 @@ class AppendOnlyJsonlRecorder:
             return self._latest_start
 
     def has_candle(self, start_time: datetime) -> bool:
+        _utc(start_time, "start_time")
         with self._lock:
-            return start_time.isoformat() in self._known_starts
+            return start_time.astimezone(timezone.utc).isoformat() in self._known_starts
 
 
 def recover_missing_candles(
