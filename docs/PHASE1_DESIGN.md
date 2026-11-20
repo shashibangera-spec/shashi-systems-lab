@@ -16,10 +16,10 @@ Official Delta Exchange India contract specifications and help articles currentl
 - Tick size: `0.50 USD`
 - Price quotation: `USD per 1 BTC`
 - Funding interval: `8 hours` (`28,800 seconds`)
-- Maker/taker fees: `0.02% / 0.05%` before any applicable taxes/charges
+- Maker/taker fees: `0.02% / 0.05%` before 18% GST on the fee (effective `0.0236% / 0.0590%`); potential taker-rate settlement fee for contracts open at settlement
 - India contract specification page: margin and effective settlement currency shown as `INR`
 
-**Important unresolved currency discrepancy:** Delta's India contract specification page says margin/effective settlement currency is INR, while the API documentation's BTCUSD example describes the contract as settled in USD and its sample product object shows a USD settling asset. These labels may describe different accounting fields or reflect documentation inconsistency. The verifier preserves the API's `settling_asset` separately and does not infer the margin currency. This discrepancy must be resolved from a current API response and Delta's authoritative clarification before any margin, PnL, or order-sizing implementation.
+**Currency reconciliation (Phase 1A closed 2026-11-21):** Delta India documents derivative contracts as notionally margined and settled in USD, while its India platform uses a fixed 1 USD = 85 INR conversion reference, keeps user balances in INR, and effectively performs margining/PnL realisation in INR. The India BTCUSD contract specification labels margin and effective settlement currency INR. Keep `api_settlement_asset=USD` distinct from documentation-derived `documented_margin_currency=INR` and `documented_effective_settlement_currency=INR`. The 85 reference is documentation-derived and must not be hard-coded as a live conversion without fresh confirmation. See [Phase 1A currency and fees](PHASE1A_CURRENCY_AND_FEES.md).
 
 Sources:
 - https://www.delta.exchange/en/contracts
@@ -27,7 +27,7 @@ Sources:
 - https://www.delta.exchange/support/solutions?articleId=80001141030
 - https://docs.delta.exchange/
 
-User-run public API verification succeeded on 2026-11-20 at 20:37:14 UTC: product 27, BTCUSD, live/operational, 0.001 BTC per lot, $0.50 tick, USD quote and API settling asset, 28,800-second funding interval, minimum one whole-number lot. The user's local test run reported 14 passed. The INR/USD margin-settlement discrepancy remains unresolved; do not treat maximum leverage as a recommendation.
+User-run public API verification succeeded on 2026-11-20 at 20:37:14 UTC: product 27, BTCUSD, live/operational, 0.001 BTC per lot, $0.50 tick, USD quote and API settling asset, 28,800-second funding interval, minimum one whole-number lot. The user's local test run reported 14 passed. The currency denomination versus effective INR account-ledger distinction is documented in `docs/PHASE1A_CURRENCY_AND_FEES.md`. Base fee and GST rules are documented there too. Do not treat maximum leverage as a recommendation.
 
 ## Current implementation
 
@@ -93,12 +93,12 @@ Signal Provider -> Risk Gate -> Order Manager -> Demo Adapter
 
 ## Milestones and acceptance gates
 
-### 1A — Contract verification
-- Run the public product verifier from a user-controlled local environment.
-- Save the timestamped report as a local artifact; do not commit raw API dumps.
-- Confirm current API response fields and resolve the INR/USD margin-settlement discrepancy.
-- Independently confirm lot increment/minimum, fees and any applicable tax/charges.
-- Fail closed if required metadata is missing or inconsistent.
+### 1A — Contract verification — CLOSED
+- User-run public product verifier confirmed product 27 and the core BTCUSD contract fields on 2026-11-20.
+- Official India documentation reconciles USD denomination with the effective INR balance/margin/PnL ledger; the documented fixed conversion reference is 85 INR per USD and is not hard-coded in software.
+- Base maker/taker fees are 0.02% / 0.05%; 18% GST applies to fees; a taker-rate settlement fee may apply to open contracts at settlement.
+- Delta support states no 1% TDS for F&O and no 30% VDA tax for F&O profits; tax treatment must be checked with a qualified professional.
+- See `docs/PHASE1A_CURRENCY_AND_FEES.md` for sources, assumptions and implementation boundaries.
 
 ### 1B — Public market data
 - Reconfirm current India public REST and WebSocket endpoints against official documentation.
@@ -112,13 +112,14 @@ Signal Provider -> Risk Gate -> Order Manager -> Demo Adapter
 - Test malformed, missing, stale and out-of-order messages.
 - Use recorded synthetic fixtures; do not include account data or secrets.
 
-### 1D — Risk controls (design and tests only)
-- Specify maximum position, per-trade risk, daily loss limit, duplicate-intent prevention and emergency stop.
-- No leverage is selected automatically.
-- No order route is enabled.
+### 1D — Risk controls (non-executing implementation)
+- Implemented a pure risk gate with max total exposure, per-intent loss, daily loss, stale-intent, currency-match, duplicate-intent and kill-switch checks.
+- Decimal-only monetary inputs and explicit single-currency evaluation; no implicit USD/INR conversion.
+- Process-local duplicate ID registry only; no persistence or execution adapter.
+- An approved decision means research-only review, never permission to place an order.
 
 ### 1E — Demo execution
-Not included in the current authorization. Requires separate explicit approval after 1A–1D pass. Demo credentials, if later needed, must be isolated from live credentials.
+Not included in the current authorization. Requires separate explicit approval after review of 1A–1D. Demo credentials, if later needed, must be isolated from live credentials.
 
 ## Endpoint notes
 
@@ -171,3 +172,6 @@ The instrument model deliberately stores `api_settlement_asset`, `documented_mar
 Candle validation requires a timezone-aware UTC half-hour start timestamp, positive finite OHLC values, non-negative finite volume, and internally consistent high/low relationships. The data-quality inspector reports duplicate starts, out-of-order input, missing 30-minute intervals and stale completed data. It does not sort the input, fill gaps, deduplicate records or otherwise repair observations. Any detected defect makes the report unacceptable.
 
 Validation is local and synthetic; Phase 1C adds no live API calls, persistent recorder, database integration, strategy logic, account access or order routes.
+
+
+See [Phase 1D risk controls](PHASE1D_RISK_CONTROLS.md) for exact gate semantics and non-goals.
