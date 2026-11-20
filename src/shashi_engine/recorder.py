@@ -103,8 +103,6 @@ class AppendOnlyJsonlRecorder:
                 with self.path.open("a", encoding="utf-8", newline="\n") as handle:
                     handle.write(line + "\n")
                     handle.flush()
-                # Best-effort durability: reopen and fsync the appended file.
-                with self.path.open("rb") as handle:
                     os.fsync(handle.fileno())
             except OSError as exc:
                 raise RecorderError(f"cannot append local record: {exc}") from exc
@@ -122,7 +120,6 @@ class AppendOnlyJsonlRecorder:
                 with self.path.open("a", encoding="utf-8", newline="\n") as handle:
                     handle.write(line + "\n")
                     handle.flush()
-                with self.path.open("rb") as handle:
                     os.fsync(handle.fileno())
             except OSError as exc:
                 raise RecorderError(f"cannot append candle: {exc}") from exc
