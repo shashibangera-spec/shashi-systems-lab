@@ -204,11 +204,13 @@ def test_fx_at_exact_maximum_age_is_accepted():
 def test_funding_events_must_follow_eight_hour_cadence():
     first = FundingEvent(Decimal("0.001"), "long", 1, Decimal("60000"), NOW - timedelta(hours=8), 28800)
     second = FundingEvent(Decimal("0.001"), "long", 1, Decimal("60000"), NOW, 28800)
-    result = calculate_accounting(scenario(funding_events=(first, second)))
+    result = calculate_accounting(scenario(
+        entry_at=NOW - timedelta(hours=16), funding_events=(first, second),
+    ))
     assert result.funding_cashflow_usd == Decimal("-0.12")
     duplicate = FundingEvent(Decimal("0.001"), "long", 1, Decimal("60000"), NOW, 28800)
     with pytest.raises(ValueError, match="8-hour cadence"):
-        scenario(funding_events=(second, duplicate))
+        scenario(entry_at=NOW - timedelta(hours=16), funding_events=(second, duplicate))
 
 
 def test_usd_adapter_rejects_gate_configured_in_inr():
