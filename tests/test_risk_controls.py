@@ -136,3 +136,14 @@ def test_context_requires_utc_timestamp():
 def test_no_float_inputs():
     with pytest.raises(ValueError, match="finite Decimal"):
         context(daily_net_pnl=1.0)
+
+
+def test_concurrent_duplicate_evaluation_approves_at_most_once():
+    from concurrent.futures import ThreadPoolExecutor
+
+    gate = RiskGate(policy())
+    proposed = intent("same-id")
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(lambda _: gate.evaluate(proposed, context()), range(32)))
+    assert sum(result.approved for result in results) == 1
+    assert sum(result.reason_code == "DUPLICATE_INTENT" for result in results) == 31
