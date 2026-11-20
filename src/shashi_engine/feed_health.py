@@ -27,6 +27,7 @@ class FeedHealthMonitor:
         self._lock = Lock()
         self._state = "DISCONNECTED"
         self._last_message_at: datetime | None = None
+        self._connected_at: datetime | None = None
 
     @property
     def state(self) -> str:
@@ -51,12 +52,16 @@ class FeedHealthMonitor:
             callback(new_state, at, self._last_message_at)
 
     def connected(self, at: datetime) -> None:
+        _utc(at)
+        with self._lock:
+            self._connected_at = at
         self._transition("CONNECTED", at)
 
     def message_received(self, at: datetime) -> None:
         _utc(at)
         with self._lock:
             self._last_message_at = at
+            self._connected_at = self._connected_at or at
         self._transition("CONNECTED", at)
 
     def disconnected(self, at: datetime) -> None:
@@ -66,7 +71,7 @@ class FeedHealthMonitor:
         _utc(at)
         with self._lock:
             state = self._state
-            last = self._last_message_at
+            last = self._last_message_at or self._connected_at
         if state == "CONNECTED" and last is not None and at - last > self.stale_after:
             self._transition("STALE", at)
         return self.state
