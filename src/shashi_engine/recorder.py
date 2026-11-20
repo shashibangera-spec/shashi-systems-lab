@@ -87,6 +87,8 @@ class AppendOnlyJsonlRecorder:
     def append(self, record: dict[str, Any]) -> None:
         if not isinstance(record, dict) or not isinstance(record.get("record_type"), str):
             raise ValueError("record must be an object with record_type")
+        if record["record_type"] in ("completed_candle", "rest_recovery"):
+            raise ValueError("use append_candle for canonical candle records")
         payload = dict(record)
         payload.setdefault("recorded_at_utc", datetime.now(timezone.utc).isoformat())
         try:
