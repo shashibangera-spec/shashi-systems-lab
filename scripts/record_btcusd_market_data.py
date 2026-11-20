@@ -15,7 +15,7 @@ from typing import Any
 from shashi_engine.feed_health import FeedHealthMonitor
 from shashi_engine.market_data import MarketDataError, fetch_candles
 from shashi_engine.models import Candle
-from shashi_engine.recorder import AppendOnlyJsonlRecorder, recover_missing_candles
+from shashi_engine.recorder import AppendOnlyJsonlRecorder, RecorderError, recover_missing_candles
 
 try:
     from scripts.probe_btcusd_websocket import CHANNEL, PUBLIC_WS_URL, SYMBOL, parse_candle_message
@@ -137,7 +137,7 @@ def run_recorder(
                             errors.append(f"REST recovery unresolved: {len(result['unresolved'])} intervals")
                 active_bucket = bucket
                 latest_update = update
-        except (json.JSONDecodeError, KeyError, TypeError, ValueError, MarketDataError) as exc:
+        except (json.JSONDecodeError, KeyError, TypeError, ValueError, MarketDataError, RecorderError) as exc:
             errors.append(str(exc))
             recorder.append({"record_type": "feed_error", "message": str(exc)})
             ws.close()
