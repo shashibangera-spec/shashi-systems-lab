@@ -10,7 +10,6 @@ from dataclasses import asdict, dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Any
 from urllib.error import URLError
-from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 BASE_URL = "https://api.india.delta.exchange"
@@ -100,8 +99,8 @@ def parse_product(product: dict[str, Any]) -> VerifiedContract:
             f"Funding interval differs from documented 28800 seconds: {funding_interval_seconds}"
         )
 
-    # Delta's India help centre states BTC futures minimum size is 0.001 BTC.
-    # Its webhook guide states order quantity is a whole number of lots.
+    # Delta India documentation states the minimum futures size is 0.001 BTC
+    # and its order examples use whole-number lot quantities.
     return VerifiedContract(
         product_id=product_id,
         symbol=symbol,
@@ -121,36 +120,27 @@ def parse_product(product: dict[str, Any]) -> VerifiedContract:
 
 
 def fetch_btcusd_product(timeout_seconds: int = 10) -> dict[str, Any]:
-    """Fetch the live BTCUSD product from the unauthenticated public products endpoint."""
-    query = urlencode({
-        "contract_types": "perpetual_futures",
-        "states": "live",
-        "page_size": 100,
-    })
+    """Fetch BTCUSD directly by symbol using Delta's documented public endpoint."""
     request = Request(
-        f"{BASE_URL}{PRODUCTS_PATH}?{query}",
+        f"{BASE_URL}{PRODUCTS_PATH}/{EXPECTED_SYMBOL}",
         headers={"Accept": "application/json", "User-Agent": "shashi-systems-lab/0.1"},
     )
     try:
         with urlopen(request, timeout=timeout_seconds) as response:
             payload = json.loads(response.read().decode("utf-8"))
     except (URLError, TimeoutError, json.JSONDecodeError, OSError) as exc:
-        raise ContractVerificationError(f"Public products API request failed: {exc}") from exc
+        raise ContractVerificationError(f"Public BTCUSD product request failed: {exc}") from exc
 
     if not isinstance(payload, dict) or payload.get("success") is not True:
-        raise ContractVerificationError("Delta products API returned an unsuccessful response")
+        raise ContractVerificationError("Delta product API returned an unsuccessful response")
     result = payload.get("result")
-    if not isinstance(result, list):
-        raise ContractVerificationError("Expected products API result to be a list")
-    matches = [
-        item for item in result
-        if isinstance(item, dict) and str(item.get("symbol", "")).upper() == EXPECTED_SYMBOL
-    ]
-    if len(matches) != 1:
+    if not isinstance(result, dict):
+        raise ContractVerificationError("Expected a single product object in API result")
+    if str(result.get("symbol", "")).upper() != EXPECTED_SYMBOL:
         raise ContractVerificationError(
-            f"Expected exactly one live BTCUSD product; found {len(matches)}"
+            f"Symbol endpoint returned unexpected product: {result.get('symbol')!r}"
         )
-    return matches[0]
+    return result
 
 
 def verify_live_contract() -> VerifiedContract:
