@@ -56,7 +56,7 @@ Names are illustrative; implementation may refine names while preserving semanti
 - `FxObservation`: base, quote, rate, observed-at UTC, source, synthetic/verified status. `AccountingPolicy` must require a configured maximum FX age; there is no default age.
 - `AccountingPolicy`: USD-only RiskGate currency, fee denomination assumption, GST denomination assumption, mandatory maximum FX age, reporting/ledger rounding policy and settlement-fee scenario setting.
 - `AccountingBreakdown`: lots, BTC quantity, USD notional, entry/exit fee, GST, potential settlement fee, funding cash-flow, gross price PnL scenario if supplied, net scenario result, INR ledger equivalents where allowed, FX provenance, warnings and assumptions.
-- `RiskEvaluationInput`: explicit risk currency, proposed notional, worst-case loss, current exposure, daily net PnL, UTC context time and kill-switch state.
+- `RiskEvaluationInput`: USD-only proposed notional, worst-case loss, current exposure, daily net PnL, UTC context time and kill-switch state. INR equivalents are reporting-only and cannot enter this object.
 - Existing `RiskPolicy`, `RiskIntent`, `RiskContext`, `RiskDecision` remain the gate interface; do not weaken their validation or alter their research-only approval meaning.
 
 All monetary and rate arithmetic must use finite `Decimal`; binary floats are rejected. Timestamps must be timezone-aware UTC. Contract lot quantity must be a whole number of lots and obey the verified minimum/increment. Price must align to the configured tick when the scenario represents an assumed executable fill; index/reference prices used only for valuation must be separately typed and need not be tick-aligned.
