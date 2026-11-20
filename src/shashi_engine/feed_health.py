@@ -55,6 +55,7 @@ class FeedHealthMonitor:
         _utc(at)
         with self._lock:
             self._connected_at = at
+            self._last_message_at = None
         self._transition("CONNECTED", at)
 
     def message_received(self, at: datetime) -> None:
