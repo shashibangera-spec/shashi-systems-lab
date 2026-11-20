@@ -64,6 +64,8 @@ class AppendOnlyJsonlRecorder:
         try:
             with self.path.open("r", encoding="utf-8") as handle:
                 for line_number, line in enumerate(handle, start=1):
+                    if not line.endswith("\n"):
+                        raise RecorderError(f"unterminated JSONL record at line {line_number}")
                     if not line.strip():
                         raise RecorderError(f"blank line in append-only log at line {line_number}")
                     try:
