@@ -116,6 +116,8 @@ class FundingEvent:
 @dataclass(frozen=True, slots=True)
 class AccountingScenario:
     instrument: Instrument
+    scenario_id: str
+    contract_metadata_source: str
     lots: int
     position_side: PositionSide
     entry_price: Decimal
@@ -133,6 +135,10 @@ class AccountingScenario:
     fx_observation: FxObservation | None = None
 
     def __post_init__(self) -> None:
+        if not self.scenario_id.strip():
+            raise ValueError("scenario_id is required")
+        if not self.contract_metadata_source.strip():
+            raise ValueError("contract metadata source is required")
         if self.instrument.contract_type != "perpetual_futures":
             raise ValueError("only perpetual_futures instruments are supported")
         if self.instrument.quote_asset != "USD":
@@ -185,7 +191,17 @@ class AccountingScenario:
 
 @dataclass(frozen=True, slots=True)
 class AccountingBreakdown:
+    scenario_id: str
+    generated_at: datetime
+    contract_symbol: str
+    contract_product_id: int
+    contract_metadata_source: str
     currency: str
+    fee_currency_assumption: str
+    gst_currency_assumption: str
+    max_fx_age: timedelta
+    reporting_decimal_places: int
+    rounding_mode: str
     lots: int
     btc_quantity: Decimal
     entry_notional_usd: Decimal
@@ -200,6 +216,7 @@ class AccountingBreakdown:
     net_scenario_result_usd: Decimal | None
     inr_equivalents: dict[str, Decimal] | None
     fx_status: str | None
+    fx_rate: Decimal | None
     fx_source: str | None
     fx_observed_at: datetime | None
     exchange_reconciled: bool
@@ -306,13 +323,23 @@ def calculate_accounting(scenario: AccountingScenario) -> AccountingBreakdown:
         elif fx_status == "synthetic":
             warnings.append("INR equivalents use a synthetic FX observation; not a live conversion.")
         return AccountingBreakdown(
-            currency="USD", lots=scenario.lots, btc_quantity=btc_qty,
+            scenario_id=scenario.scenario_id, generated_at=scenario.as_of,
+            contract_symbol=instrument.symbol, contract_product_id=instrument.product_id,
+            contract_metadata_source=scenario.contract_metadata_source,
+            currency="USD", fee_currency_assumption=scenario.policy.fee_currency_assumption,
+            gst_currency_assumption=scenario.policy.gst_currency_assumption,
+            max_fx_age=scenario.policy.max_fx_age,
+            reporting_decimal_places=scenario.policy.reporting_decimal_places,
+            rounding_mode=scenario.policy.rounding,
+            lots=scenario.lots, btc_quantity=btc_qty,
             entry_notional_usd=entry_notional, exit_notional_usd=exit_notional,
             entry_fee_usd=entry_fee, entry_gst_usd=entry_gst,
             exit_fee_usd=exit_fee, exit_gst_usd=exit_gst,
             settlement_fee_usd=settlement_fee, funding_cashflow_usd=funding_cashflow,
             gross_scenario_pnl_usd=gross_pnl, net_scenario_result_usd=net_result,
-            inr_equivalents=inr, fx_status=fx_status, fx_source=fx_source,
+            inr_equivalents=inr, fx_status=fx_status,
+            fx_rate=scenario.fx_observation.rate if inr is not None and scenario.fx_observation else None,
+            fx_source=fx_source,
             fx_observed_at=fx_at, exchange_reconciled=False, warnings=tuple(warnings),
         )
 
