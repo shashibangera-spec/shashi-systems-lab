@@ -42,10 +42,8 @@ class FeedHealthMonitor:
     def _transition(self, new_state: str, at: datetime) -> None:
         _utc(at)
         callback = None
-        previous = None
         with self._lock:
             if new_state != self._state:
-                previous = self._state
                 self._state = new_state
                 callback = self.on_transition
         if callback is not None:
