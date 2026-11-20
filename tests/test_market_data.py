@@ -34,15 +34,15 @@ def test_ticker_rejects_wrong_symbol():
         parse_ticker({"symbol": "ETHUSD"})
 
 
-def test_parse_candles_sorts_and_checks_ohlcv():
+def test_parse_candles_preserves_source_order_and_checks_ohlcv():
     rows = [
-        {"time": 1795201800, "open": "11", "high": "13", "low": "10", "close": "12", "volume": "4"},
-        {"time": 1795200000, "open": "10", "high": "12", "low": "9", "close": "11", "volume": "3"},
+        {"time": 1795203000, "open": "11", "high": "13", "low": "10", "close": "12", "volume": "4"},
+        {"time": 1795201200, "open": "10", "high": "12", "low": "9", "close": "11", "volume": "3"},
     ]
     candles = parse_candles(rows)
-    assert candles[0].start_time < candles[1].start_time
+    assert candles[0].start_time > candles[1].start_time
     assert candles[0].resolution == "30m"
-    assert candles[0].volume == Decimal("3")
+    assert candles[0].volume == Decimal("4")
 
 
 def test_parse_candles_rejects_invalid_high_low():
