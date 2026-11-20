@@ -42,12 +42,13 @@ def test_parse_candles_preserves_source_order_and_checks_ohlcv():
     candles = parse_candles(rows)
     assert candles[0].start_time > candles[1].start_time
     assert candles[0].resolution == "30m"
+    assert isinstance(candles[0], __import__("shashi_engine.models", fromlist=["Candle"]).Candle)
     assert candles[0].volume == Decimal("4")
 
 
 def test_parse_candles_rejects_invalid_high_low():
     rows = [
-        {"time": 1795200000, "open": "10", "high": "8", "low": "9", "close": "11", "volume": "1"}
+        {"time": 1795201200, "open": "10", "high": "8", "low": "9", "close": "11", "volume": "1"}
     ]
     with pytest.raises(MarketDataError, match="OHLCV"):
         parse_candles(rows)
@@ -55,7 +56,7 @@ def test_parse_candles_rejects_invalid_high_low():
 
 def test_parse_candles_rejects_negative_volume():
     rows = [
-        {"time": 1795200000, "open": "10", "high": "12", "low": "9", "close": "11", "volume": "-1"}
+        {"time": 1795201200, "open": "10", "high": "12", "low": "9", "close": "11", "volume": "-1"}
     ]
     with pytest.raises(MarketDataError, match="OHLCV"):
         parse_candles(rows)
