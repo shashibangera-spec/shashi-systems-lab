@@ -8,7 +8,7 @@
 4. Canonical candle timestamps are unique across the existing file and current process.
 5. Reopening an existing valid file rebuilds canonical candle identity without changing prior bytes.
 6. A duplicate canonical candle is skipped; the original record is not rewritten.
-7. Existing malformed JSON, blank lines or malformed canonical timestamps fail closed.
+7. Existing malformed JSON, blank lines, unterminated final lines or malformed canonical timestamps fail closed.
 8. Generic append cannot bypass the canonical candle deduplication path.
 9. JSON serialization rejects non-serializable and non-finite values.
 10. Output under `data/` remains git-ignored.
