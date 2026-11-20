@@ -47,7 +47,7 @@ The candle script is a live public-data validation step. Review its output for t
 Do not commit live response dumps. Review returned fields and timestamps locally.
 ### Public WebSocket probe
 
-The official India public WebSocket endpoint is `wss://public-socket.india.delta.exchange`. The current public `candlesticks` channel supports `candlestick_30m` and a BTCUSD symbol subscription without authentication. `scripts/probe_btcusd_websocket.py` is a bounded 90-second probe: it subscribes only to BTCUSD 30-minute traded-price candles, validates received OHLCV events, uses WebSocket ping/pong, and prints a summary. It does not persist data or connect to private channels.
+The official India public WebSocket endpoint is `wss://public-socket.india.delta.exchange`. The current public `candlesticks` channel supports `candlestick_30m` and a BTCUSD symbol subscription without authentication. `scripts/probe_btcusd_websocket.py` is a bounded 90-second probe: it subscribes only to BTCUSD 30-minute traded-price candles, validates received OHLCV events and the explicit candle-start field (Delta compact key `cst`, Unix microseconds) when present, uses WebSocket ping/pong, and prints a summary. It does not persist data or connect to private channels.
 
 Install the optional client and run:
 
@@ -150,7 +150,7 @@ This repository is public by user choice. Do not commit secrets, credentials, pr
 
 ### REST-versus-WebSocket completed-candle consistency check
 
-After the short WebSocket probe succeeds, run `scripts/compare_btcusd_rest_websocket.py` to validate one fully completed 30-minute candle. This bounded read-only check waits for the WebSocket to roll into the next UTC 30-minute bucket, retains the final update for the prior bucket, then retrieves that exact candle from REST and compares open, high, low, close and volume with Decimal equality. It may wait up to 40 minutes depending on when it is started. A missing REST candle after bounded retries or a skipped WebSocket interval is reported as inconclusive; a field difference is reported as a mismatch. Neither outcome is silently repaired or treated as a pass.
+After the short WebSocket probe succeeds, run `scripts/compare_btcusd_rest_websocket.py` to validate one fully completed 30-minute candle. This bounded read-only check waits for the WebSocket to roll into the next UTC 30-minute bucket, retains the final update for the prior bucket, then retrieves that exact candle from REST and compares open, high, low, close and volume with Decimal equality. The bucket is selected exclusively from the WebSocket `cst` candle-start timestamp (or descriptive `candle_start_time` alias), never from the event/publish timestamp `ts`. If the explicit candle-start field is missing or not aligned to a UTC 30-minute boundary, the check fails closed. It may wait up to 40 minutes depending on when it is started. A missing REST candle after bounded retries or a skipped WebSocket interval is reported as inconclusive; a field difference is reported as a mismatch. Neither outcome is silently repaired or treated as a pass.
 
 Run:
 
