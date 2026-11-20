@@ -28,3 +28,6 @@ This repository is public. Never commit API keys, credentials, account identifie
 ## Project status
 
 See [Phase 1 design](docs/PHASE1_DESIGN.md). Phase 1A currency/fee research is documented in [Phase 1A closure](docs/PHASE1A_CURRENCY_AND_FEES.md); non-executing controls are documented in [Phase 1D](docs/PHASE1D_RISK_CONTROLS.md). The repository does not place orders.
+
+
+Phase 1E's approved non-executing accounting simulator is under implementation on the `phase1e-accounting-simulator` branch. See [the specification](docs/PHASE1E_ACCOUNTING_SIMULATOR_SPEC.md) and [acceptance tests](docs/PHASE1E_ACCEPTANCE_TESTS.md). RiskGate remains USD-only; INR equivalents require explicit fresh FX and are display-only.
