@@ -108,7 +108,7 @@ class AppendOnlyJsonlRecorder:
                     os.fsync(handle.fileno())
             except OSError as exc:
                 raise RecorderError(f"cannot append local record: {exc}") from exc
-    
+
     def append_candle(self, candle: Candle, *, record_type: str, source: str) -> bool:
         """Append a canonical candle once; return False when already recorded."""
         payload = candle_record(candle, record_type=record_type, source=source)
