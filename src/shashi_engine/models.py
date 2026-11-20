@@ -8,7 +8,7 @@ from decimal import Decimal
 
 def _require_utc(value: datetime, field: str) -> None:
     if value.tzinfo is None or value.utcoffset() is None:
-        raise ValueError(f"{field} must be timezone-aware")
+        raise ValueError(f"{field} must be timezone-aware UTC")
     if value.utcoffset() != timedelta(0):
         raise ValueError(f"{field} must be expressed in UTC")
 
