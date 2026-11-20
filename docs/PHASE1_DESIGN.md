@@ -45,6 +45,18 @@ python -m pytest -q
 The candle script is a live public-data validation step. Review its output for the expected approximate 96 intervals, no duplicate or misaligned timestamps, no unexplained gaps, valid OHLCV, and whether the latest returned candle is complete. A gap or incomplete latest candle is reported for review rather than silently filled or treated as a completed bar.
 
 Do not commit live response dumps. Review returned fields and timestamps locally.
+### Public WebSocket probe
+
+The official India public WebSocket endpoint is `wss://public-socket.india.delta.exchange`. The current public `candlesticks` channel supports `candlestick_30m` and a BTCUSD symbol subscription without authentication. `scripts/probe_btcusd_websocket.py` is a bounded 90-second probe: it subscribes only to BTCUSD 30-minute traded-price candles, validates received OHLCV events, uses WebSocket ping/pong, and prints a summary. It does not persist data or connect to private channels.
+
+Install the optional client and run:
+
+```bash
+pip install -e '.[market-data]'
+python scripts/probe_btcusd_websocket.py
+```
+
+A successful probe should receive at least one BTCUSD candle update with a valid timestamp and OHLC values. A 90-second timeout with no event is inconclusive, not proof that the feed is unavailable. Do not subscribe to private channels or provide credentials.
 ## Architecture
 
 ```
