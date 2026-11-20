@@ -26,11 +26,11 @@ These are acceptance criteria for a future implementation. They are not evidence
 11. A supplied synthetic USD/INR rate of 90.00 converts USD 60.00 to INR 5,400.00; output clearly labels the rate synthetic.
 12. The documented 85 INR/USD value is never silently used as a default or fallback.
 13. Missing FX observation prevents INR output while allowing valid USD-only calculations.
-14. Wrong pair (e.g. INR/USD when USD/INR is required), zero, negative, NaN, infinity, stale, or future-dated FX observation fails closed for INR conversion.
+14. Wrong pair (e.g. INR/USD when USD/INR is required), zero, negative, NaN, infinity, stale, or future-dated FX observation fails closed for INR display; USD-only calculations remain available.
 15. FX observation includes source, UTC timestamp, base/quote and synthetic/verified status; missing provenance is rejected.
 16. Converted INR and original USD amounts remain separately available and are never added together.
 17. An already-INR amount is not converted again.
-18. FX freshness boundary semantics are explicit and tested at exactly the maximum allowed age and just beyond it.
+18. A maximum FX age must be explicitly configured; absent policy fails closed for INR output. Freshness boundary semantics are tested at exactly the maximum age and just beyond it.
 19. The raw API settlement asset remains distinct from documented INR account-ledger currency in models and serialized output.
 
 ## D. Maker/taker fees and GST
@@ -72,9 +72,9 @@ These are acceptance criteria for a future implementation. They are not evidence
 ## H. RiskGate integration
 
 44. A valid USD scenario constructs RiskIntent and RiskContext with USD throughout and invokes the existing RiskGate.
-45. A valid INR scenario invokes the gate only after all required USD-derived values have been converted using the same accepted FX observation/policy.
+45. INR equivalents are display-only and never invoke or feed RiskGate.
 46. Mixed USD/INR inputs are rejected before RiskGate is called.
-47. Missing, stale, future-dated or unverified-required FX blocks INR risk evaluation before RiskGate.
+47. Missing/stale/future-dated FX suppresses INR equivalents but does not block otherwise-valid USD-only RiskGate evaluation.
 48. Worst-case loss passed to RiskGate includes the explicitly selected cost components and documented assumptions; it is not silently equated with gross price movement.
 49. Existing RiskGate reason codes are preserved exactly: duplicate intent, currency mismatch, kill switch, stale/future intent, daily loss, single-intent loss and aggregate exposure.
 50. Duplicate intent IDs are rejected by the existing gate; integration does not bypass or reset its registry.
@@ -101,14 +101,13 @@ These are acceptance criteria for a future implementation. They are not evidence
 - No order/execution or account-access code.
 - PR remains open and unmerged until explicit user approval.
 
-## Blocking questions before implementation
+## Explicit implementation policy inputs and caveats
 
-The specification intentionally leaves these configurable rather than inventing exchange rules:
+- FX source is supplied per observation and recorded verbatim; no network FX client is included. `max_fx_age` is a required policy input with no implicit default. Synthetic FX is confined to clearly labelled tests.
+- Fee/GST denomination and exchange-specific rounding remain configurable assumptions pending authoritative account/API reconciliation. Outputs must not claim exchange-reconciled ledger equivalence.
+- Settlement-fee rate is explicit configuration; charge only for positions held through expiry/settlement, on settlement notional.
+- Funding rate and mark price are explicit scenario inputs; positive means longs pay shorts, negative means shorts pay longs; apply each 8-hour event.
+- Decimal values remain unrounded internally; quantize only at explicit reporting/ledger boundaries.
+- RiskGate is USD-only; INR equivalents are display-only.
 
-1. Which FX source and maximum observation age should be accepted for INR scenario conversion? Synthetic FX is permitted for unit tests only.
-2. Should Phase 1E initially support USD-only RiskGate evaluation, with INR reporting as a separately labelled ledger view, until Delta confirms fee/GST booking and conversion details?
-3. What exact settlement-fee eligibility event and notional basis should be modelled?
-4. What funding sign convention and notional basis should be used for scenario calculations?
-5. What currency precision and rounding mode should be used, pending Delta confirmation?
-
-Until these are answered, a future implementation must not claim exchange-reconciled INR PnL or accounting.
+These are accepted implementation conventions, not a claim that all exchange-specific fee/account-ledger semantics have been independently verified.
