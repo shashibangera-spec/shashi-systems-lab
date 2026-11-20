@@ -9,8 +9,10 @@ A standalone research and engineering workspace for a modular market-data and si
 - Verify instrument metadata from Delta Exchange's public API.
 - Consume public market data only.
 - Normalize market data into typed internal models.
-- Record data quality and connection health.
-- Design order and risk interfaces without submitting orders.
+- Record public market data locally in append-only JSONL.
+- Monitor feed freshness and connection health.
+- Recover missing completed 30-minute candles from public REST.
+- Keep risk and accounting research separate from all execution.
 
 ## Safety boundaries
 
@@ -19,7 +21,7 @@ A standalone research and engineering workspace for a modular market-data and si
 - No withdrawal permissions.
 - No connection to the existing BTC dashboard or its production database.
 - No strategy signals connected to execution.
-- Demo execution requires separate approval after Phase 1 validation.
+- Demo execution is not authorized and requires a separate future approval.
 
 ## Public repository warning
 
@@ -27,7 +29,11 @@ This repository is public. Never commit API keys, credentials, account identifie
 
 ## Project status
 
-See [Phase 1 design](docs/PHASE1_DESIGN.md). Phase 1A currency/fee research is documented in [Phase 1A closure](docs/PHASE1A_CURRENCY_AND_FEES.md); non-executing controls are documented in [Phase 1D](docs/PHASE1D_RISK_CONTROLS.md). The repository does not place orders.
+See [Phase 1 design](docs/PHASE1_DESIGN.md) for the reconciled milestone roadmap. Phase 1A currency/fee research is closed in [Phase 1A documentation](docs/PHASE1A_CURRENCY_AND_FEES.md); non-executing risk controls are documented in [Phase 1D](docs/PHASE1D_RISK_CONTROLS.md).
 
+- **Phase 1E — CLOSED:** non-executing accounting simulator. See [specification](docs/PHASE1E_ACCOUNTING_SIMULATOR_SPEC.md) and [acceptance tests](docs/PHASE1E_ACCEPTANCE_TESTS.md). RiskGate remains USD-only; INR equivalents require explicit fresh FX and are display-only.
+- **Phase 1F — UNDER REVIEW:** append-only local recorder, feed-health monitoring and REST gap recovery. See [specification](docs/PHASE1F_RECORDER_SPEC.md) and [acceptance tests](docs/PHASE1F_ACCEPTANCE_TESTS.md).
+- **Phase 1G — PROPOSED:** historical dataset validation and deterministic replay.
+- **Phase 1H — NOT AUTHORIZED:** demo execution requires separate explicit approval.
 
-Phase 1E's approved non-executing accounting simulator is under implementation on the `phase1e-accounting-simulator` branch. See [the specification](docs/PHASE1E_ACCOUNTING_SIMULATOR_SPEC.md) and [acceptance tests](docs/PHASE1E_ACCEPTANCE_TESTS.md). RiskGate remains USD-only; INR equivalents require explicit fresh FX and are display-only.
+The repository uses public market data only and does not place orders or connect to the existing BTC dashboard or its production database.
