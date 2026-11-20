@@ -31,17 +31,21 @@ User-run public API verification succeeded on 2026-11-20 at 20:37:14 UTC: produc
 
 ## Current implementation
 
-`src/shashi_engine/contract_verification.py` performs a public unauthenticated GET to Delta India's `/v2/products` endpoint, selects BTCUSD and validates its identity, state, contract type, contract value, unit, tick, quote asset and funding interval. It records minimum order as one whole lot based on Delta's help-centre documentation. It deliberately does not infer margin currency.
+`src/shashi_engine/market_data.py` adds an unauthenticated REST adapter for the BTCUSD ticker and 30-minute historical candles, with Decimal normalization and basic OHLCV validation. The historical candle endpoint accepts Unix `start` and `end` timestamps in seconds and supports up to 2,000 candles per response. `scripts/read_btcusd_ticker.py` prints a single public ticker snapshot. `scripts/read_btcusd_candles.py` fetches a bounded 48-hour sample of 30-minute candles and reports timestamp alignment, duplicates, gaps, candle completeness and representative OHLCV values. The scripts do not save raw API responses.
 
 Run locally from the repository root:
 
 ```bash
 python scripts/verify_btcusd_contract.py
+python scripts/read_btcusd_ticker.py
+python scripts/read_btcusd_candles.py
+python -m pytest -q
 ```
 
-A successful run prints a timestamped JSON report. A failed request or unexpected required field exits non-zero. The verifier has no private API authentication or order methods.
+The candle script is a live public-data validation step. Review its output for the expected approximate 96 intervals, no duplicate or misaligned timestamps, no unexplained gaps, valid OHLCV, and whether the latest returned candle is complete. A gap or incomplete latest candle is reported for review rather than silently filled or treated as a completed bar.
 
-## Current Phase 1B implementation\n\n`src/shashi_engine/market_data.py` adds an unauthenticated REST adapter for the BTCUSD ticker and 30-minute historical candles, with Decimal normalization and basic OHLCV validation. `scripts/read_btcusd_ticker.py` prints a single read-only ticker snapshot. `tests/test_market_data.py` covers parsing and malformed payloads. The adapter is implemented but has not yet been run against the live ticker/candle endpoints or through the user's local test suite.\n\nRun locally:\n\n```bash\npython scripts/read_btcusd_ticker.py\npython -m pytest -q\n```\n\nDo not commit live response dumps. Review the returned fields and timestamps locally.\n\n## Architecture
+Do not commit live response dumps. Review returned fields and timestamps locally.
+## Architecture
 
 ```
 Delta public REST / public WebSocket
