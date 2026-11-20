@@ -103,6 +103,11 @@ class RiskGate:
         self._seen_intent_ids: set[str] = set()
         self._lock = Lock()
 
+    @property
+    def currency(self) -> str:
+        """Read-only currency configured for this gate."""
+        return self._policy.currency
+
     def evaluate(self, intent: RiskIntent, context: RiskContext) -> RiskDecision:
         """Evaluate once and remember the ID, including when the intent is rejected."""
         with self._lock:
