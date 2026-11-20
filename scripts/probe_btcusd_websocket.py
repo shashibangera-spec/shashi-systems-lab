@@ -29,6 +29,20 @@ def parse_candle_message(message: dict[str, Any]) -> dict[str, str] | None:
             raise ValueError("invalid event timestamp")
         timestamp = datetime.fromtimestamp(float(raw_ts / Decimal("1e6")), timezone.utc)
 
+        # Delta compact candlestick messages expose candle start in "cst"
+        # (Unix microseconds). Accept the descriptive legacy key as well.
+        raw_candle_start = message.get("cst", message.get("candle_start_time"))
+        if raw_candle_start is None:
+            candle_start_time = "not_provided"
+        else:
+            raw_start = Decimal(str(raw_candle_start))
+            if not raw_start.is_finite() or raw_start <= 0:
+                raise ValueError("invalid candle start timestamp")
+            candle_start_dt = datetime.fromtimestamp(
+                float(raw_start / Decimal("1e6")), timezone.utc
+            )
+            candle_start_time = candle_start_dt.isoformat()
+
         values = {
             name: Decimal(str(message[key]))
             for name, key in (
@@ -54,6 +68,7 @@ def parse_candle_message(message: dict[str, Any]) -> dict[str, str] | None:
         "symbol": SYMBOL,
         "resolution": str(message.get("res", "30m")),
         "event_time_utc": timestamp.isoformat(),
+        "candle_start_time_utc": candle_start_time,
         **{key: str(value) for key, value in values.items()},
         "volume": str(volume) if volume is not None else "not_provided",
     }
