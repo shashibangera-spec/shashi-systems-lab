@@ -38,9 +38,18 @@ def parse_candle_message(message: dict[str, Any]) -> dict[str, str] | None:
             raw_start = Decimal(str(raw_candle_start))
             if not raw_start.is_finite() or raw_start <= 0:
                 raise ValueError("invalid candle start timestamp")
-            candle_start_dt = datetime.fromtimestamp(
-                float(raw_start / Decimal("1e6")), timezone.utc
-            )
+            # Delta's compact "cst" is commonly microseconds; the
+            # descriptive candle_start_time form has also appeared as
+            # nanoseconds. Infer the epoch unit by magnitude for both.
+            if raw_start >= Decimal("1e17"):
+                start_seconds = raw_start / Decimal("1e9")
+            elif raw_start >= Decimal("1e14"):
+                start_seconds = raw_start / Decimal("1e6")
+            elif raw_start >= Decimal("1e11"):
+                start_seconds = raw_start / Decimal("1e3")
+            else:
+                start_seconds = raw_start
+            candle_start_dt = datetime.fromtimestamp(float(start_seconds), timezone.utc)
             candle_start_time = candle_start_dt.isoformat()
 
         values = {
