@@ -201,3 +201,37 @@ def test_feed_health_rejects_naive_timestamps():
     )
     with pytest.raises(ValueError, match="UTC"):
         monitor.connected(datetime(2026, 11, 21))
+
+
+
+def test_canonical_dedup_normalizes_z_and_utc_offset(tmp_path):
+    path = tmp_path / "btc.jsonl"
+    path.write_text(
+        '{"record_type":"completed_candle","candle_start_utc":"2026-11-21T00:00:00Z"}\\n',
+        encoding="utf-8",
+    )
+    recorder = AppendOnlyJsonlRecorder(path)
+    assert not recorder.append_candle(candle(0), record_type="completed_candle", source="websocket")
+
+
+def test_generic_append_cannot_bypass_canonical_writer(tmp_path):
+    recorder = AppendOnlyJsonlRecorder(tmp_path / "btc.jsonl")
+    with pytest.raises(ValueError, match="append_candle"):
+        recorder.append({"record_type": "completed_candle", "candle_start_utc": T0.isoformat()})
+
+
+def test_reconnect_resets_old_message_freshness_clock():
+    transitions = []
+    monitor = FeedHealthMonitor(
+        stale_after=timedelta(seconds=10),
+        on_transition=lambda state, at, last: transitions.append((state, last)),
+    )
+    monitor.connected(T0)
+    monitor.message_received(T0 + timedelta(seconds=1))
+    monitor.disconnected(T0 + timedelta(seconds=2))
+    reconnect_at = T0 + timedelta(minutes=5)
+    monitor.connected(reconnect_at)
+    assert monitor.check(reconnect_at + timedelta(seconds=5)) == "CONNECTED"
+    assert monitor.check(reconnect_at + timedelta(seconds=11)) == "STALE"
+    assert transitions[-1][0] == "STALE"
+    assert transitions[-1][1] is None
