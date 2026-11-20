@@ -1,6 +1,6 @@
 # Phase 1E — Non-executing accounting simulator specification
 
-Status: **Specification for review only — no implementation authorized by this document.**  
+Status: **Approved implementation specification — non-executing simulator only.**  
 Repository: `shashibangera-spec/shashi-systems-lab`  
 Base: `main` at `64354b21deabf38608f9a63dd7cef6915b1aa05b`
 
@@ -37,11 +37,11 @@ Keep these concepts distinct in types and output:
 1. **Contract denomination:** BTCUSD notional is represented in USD.
 2. **API metadata:** preserve the raw `api_settlement_asset` value returned by the public product API (the user's earlier verifier reported USD).
 3. **India account ledger:** Delta India documentation describes INR balances and effective INR margin/PnL realization.
-4. **FX observation:** an explicit input record, not a constant. It must include base currency USD, quote currency INR, positive finite Decimal rate, observed-at UTC timestamp, source label, and an explicit status indicating whether it is synthetic or externally verified.
+4. **FX observation:** an explicit input record, not a constant. It must include base currency USD, quote currency INR, positive finite Decimal rate, observed-at UTC timestamp, source label, and an explicit status indicating whether it is synthetic or externally verified. An explicit `max_age` freshness policy is mandatory; the policy value is configuration, not an inferred default.
 
 The simulator must not infer one field from another. It must not rewrite the raw API settlement asset to INR or infer that a USD API field means the account ledger is USD.
 
-**No implicit FX:** every conversion requires a supplied FX observation. Missing, stale, future-dated, wrong-direction, non-positive, or unverified FX input must fail closed for INR-ledger output. Synthetic tests may use an explicitly labelled synthetic rate; they must not present it as Delta's current rate.
+**No implicit FX:** every conversion requires a supplied FX observation. Missing, stale, future-dated, wrong-direction, non-positive, or provenance-incomplete FX input must fail closed for INR output. Staleness is determined against the explicitly configured maximum age; if no maximum age is configured, INR output fails closed. Synthetic observations are allowed only in clearly labelled test/research fixtures and must never be presented as a live Delta conversion rate. A supplied externally sourced observation may be used for a separately labelled INR equivalent when its source, timestamp, pair, rate and freshness all validate.
 
 The previously documented 85 INR/USD value is historical/documentation context only. Do not use it as a default, fallback, constant, or test oracle.
 
@@ -53,8 +53,8 @@ Names are illustrative; implementation may refine names while preserving semanti
 - `FillAssumption`: side (entry/exit), lots, reference/index price, maker/taker classification, timestamp. This is a scenario input, not an exchange fill.
 - `FeeSchedule`: maker/taker rates, GST rate, optional settlement-fee rate and eligibility flag. Rates are explicit configuration, not hidden defaults.
 - `FundingAssumption`: funding rate, notional basis, payment direction and timestamp/interval. Keep funding separate from trading fee and GST.
-- `FxObservation`: base, quote, rate, observed-at UTC, source, synthetic/verified status, optional maximum age.
-- `AccountingPolicy`: reporting currency, fee denomination assumption, GST denomination assumption, FX freshness policy, rounding policy and settlement-fee scenario setting.
+- `FxObservation`: base, quote, rate, observed-at UTC, source, synthetic/verified status. `AccountingPolicy` must require a configured maximum FX age; there is no default age.
+- `AccountingPolicy`: USD-only RiskGate currency, fee denomination assumption, GST denomination assumption, mandatory maximum FX age, reporting/ledger rounding policy and settlement-fee scenario setting.
 - `AccountingBreakdown`: lots, BTC quantity, USD notional, entry/exit fee, GST, potential settlement fee, funding cash-flow, gross price PnL scenario if supplied, net scenario result, INR ledger equivalents where allowed, FX provenance, warnings and assumptions.
 - `RiskEvaluationInput`: explicit risk currency, proposed notional, worst-case loss, current exposure, daily net PnL, UTC context time and kill-switch state.
 - Existing `RiskPolicy`, `RiskIntent`, `RiskContext`, `RiskDecision` remain the gate interface; do not weaken their validation or alter their research-only approval meaning.
@@ -84,19 +84,19 @@ Do not classify a limit order as maker merely because it is a limit order; maker
 **Unresolved billing detail:** before claiming exact account-ledger equivalence, obtain authoritative confirmation of the currency in which fees/GST are charged and how rounding is applied. Until then, represent fee denomination as an explicit policy assumption and label output as simulated, not exchange-reconciled.
 
 ### 5.3 Settlement fee
-A potential taker-rate settlement fee for contracts open at settlement must be represented as a separate conditional line item. It is zero only when the scenario explicitly says the position is not subject to settlement fee. Do not silently omit it or apply it to every trade.
+A settlement fee is a separate conditional line item. Apply it only when the scenario explicitly states that a contract is held through expiry/settlement. Calculate it on the explicitly supplied settlement notional using the configured settlement-fee rate (the documented base taker rate may be used as a clearly labelled scenario assumption, not a hidden constant). If the contract is not held through settlement, record zero with the reason. If settlement eligibility, notional or rate is unknown, mark the settlement component unresolved; do not silently assume zero or charge every closed trade.
 
 ### 5.4 Funding
-Funding is a separate periodic perpetual-contract cash flow, not a maker/taker fee and not GST on trading fees. The funding assumption must explicitly state rate, notional basis, direction/sign convention, and interval. Do not infer who pays whom from a positive rate without an explicit convention in the scenario. No historical or live funding fetch is in scope.
+Funding is a separate periodic perpetual-contract cash flow, not a maker/taker fee and not GST on trading fees. Use the standard perpetual convention: positive funding means longs pay shorts; negative funding means shorts pay longs. Calculate each funding event on mark-price notional at the 8-hour funding interval specified by the verified contract metadata. A long position's signed cash flow is negative for positive funding and positive for negative funding; a short position is the inverse. Require an explicit funding rate, position side/quantity, mark price and event timestamp. Funding remains separate from trading fees and GST. No historical or live funding fetch is in scope.
 
-### 5.5 FX conversion and INR ledger
-Convert each eligible USD ledger component using the supplied USD/INR observation only:
+### 5.5 FX conversion and INR reporting view
+Convert each eligible USD component for a separately labelled INR equivalent using the supplied USD/INR observation only. This is a parallel reporting view, not a second source of truth and not an input to RiskGate:
 - INR equivalent = USD amount × supplied INR-per-USD rate.
 - Preserve original USD value and converted INR value side by side.
 - Record exact FX rate, source, timestamp, and synthetic/verified status.
 - Never convert an already-INR amount again.
 - Do not aggregate USD and INR values in one total.
-- If fee/GST currency treatment is unresolved, show the assumed denomination prominently and prevent the report from being labelled exchange-reconciled.
+- If fee/GST currency treatment is unresolved, show the assumed denomination prominently and prevent the report from being labelled exchange-reconciled. INR equivalents are omitted if the observation is missing, future-dated, older than the configured maximum age, wrong-direction, non-positive, or missing provenance. USD calculations remain available.
 
 ### 5.6 Rounding
 Keep full Decimal precision through intermediate calculations. Quantize only at an explicitly configured presentation/ledger boundary. Currency minor-unit precision and exchange rounding rules must be configurable and marked unverified until Delta confirms them. Tests must verify no premature rounding.
@@ -106,13 +106,13 @@ Only a clearly labelled **scenario price PnL** may be calculated from explicit e
 
 ## 6. RiskGate integration contract
 
-The accounting layer produces a risk-evaluation request; it does not approve itself.
+RiskGate evaluation is **strictly USD-only** in Phase 1E. INR is display-only and must never be passed to RiskGate.
 
-1. Caller explicitly selects the risk currency (USD or INR).
-2. Proposed notional, worst-case loss, current exposure and daily net PnL must all be expressed in that same currency.
-3. INR risk evaluation requires a valid FX observation and explicit conversion policy for every USD-derived amount.
-4. If any input is missing, stale, future-dated, mixed-currency, or based on unresolved assumptions, do not call the gate; return a fail-closed accounting validation result.
-5. Construct existing `RiskIntent` and `RiskContext` with the selected currency and UTC timestamps, then call existing `RiskGate.evaluate()`.
+1. Proposed notional, worst-case loss, current exposure and daily net PnL must all be USD amounts.
+2. Mixed-currency inputs are rejected before the gate is called. No FX conversion is performed for RiskGate.
+3. Missing or invalid INR FX does not block a valid USD-only RiskGate evaluation; it only suppresses the separate INR reporting equivalents.
+4. If any USD risk input is missing, invalid, stale/future-dated where applicable, or based on unresolved accounting assumptions, do not call the gate; return a fail-closed accounting validation result.
+5. Construct existing `RiskIntent` and `RiskContext` with USD and UTC timestamps, then call existing `RiskGate.evaluate()`.
 6. Preserve the exact gate decision and reason code. Do not translate `APPROVED_FOR_RESEARCH_ONLY` into execution approval.
 7. Duplicate-intent behaviour remains process-local and is not a durable idempotency guarantee.
 
@@ -125,7 +125,7 @@ Every report must include:
 - contract metadata version/source;
 - all input assumptions and whether synthetic or verified;
 - USD quantities and totals;
-- INR equivalents only when valid FX was supplied;
+- INR equivalents only when a valid, fresh, explicitly sourced USD/INR observation was supplied; RiskGate inputs and decisions in USD only;
 - fee, GST, settlement fee and funding as distinct rows;
 - rounding policy;
 - unresolved assumptions/warnings;
