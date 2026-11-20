@@ -15,7 +15,7 @@ from typing import Any
 from shashi_engine.feed_health import FeedHealthMonitor
 from shashi_engine.market_data import MarketDataError, fetch_candles
 from shashi_engine.models import Candle
-from shashi_engine.recorder import AppendOnlyJsonlRecorder, candle_record, recover_missing_candles
+from shashi_engine.recorder import AppendOnlyJsonlRecorder, recover_missing_candles
 
 try:
     from scripts.probe_btcusd_websocket import CHANNEL, PUBLIC_WS_URL, SYMBOL, parse_candle_message
