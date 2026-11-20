@@ -207,7 +207,7 @@ def test_feed_health_rejects_naive_timestamps():
 def test_canonical_dedup_normalizes_z_and_utc_offset(tmp_path):
     path = tmp_path / "btc.jsonl"
     path.write_text(
-        '{"record_type":"completed_candle","candle_start_utc":"2026-11-21T00:00:00Z"}\\n',
+        '{"record_type":"completed_candle","candle_start_utc":"2026-11-21T00:00:00Z"}' + chr(10),
         encoding="utf-8",
     )
     recorder = AppendOnlyJsonlRecorder(path)
