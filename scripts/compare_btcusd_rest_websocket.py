@@ -14,12 +14,11 @@ from decimal import Decimal
 from typing import Any
 
 from shashi_engine.market_data import MarketDataError, fetch_candles
-from scripts.probe_btcusd_websocket import (
-    CHANNEL,
-    PUBLIC_WS_URL,
-    SYMBOL,
-    parse_candle_message,
-)
+try:
+    from scripts.probe_btcusd_websocket import CHANNEL, PUBLIC_WS_URL, SYMBOL, parse_candle_message
+except ModuleNotFoundError:
+    # When executed as "python scripts/...", the scripts directory is sys.path[0].
+    from probe_btcusd_websocket import CHANNEL, PUBLIC_WS_URL, SYMBOL, parse_candle_message
 
 INTERVAL_SECONDS = 30 * 60
 MAX_WAIT_SECONDS = 40 * 60
