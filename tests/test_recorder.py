@@ -235,3 +235,11 @@ def test_reconnect_resets_old_message_freshness_clock():
     assert monitor.check(reconnect_at + timedelta(seconds=11)) == "STALE"
     assert transitions[-1][0] == "STALE"
     assert transitions[-1][1] is None
+
+
+
+def test_unterminated_existing_final_line_fails_closed(tmp_path):
+    path = tmp_path / "btc.jsonl"
+    path.write_text('{"record_type":"feed_health"}', encoding="utf-8")
+    with pytest.raises(RecorderError, match="unterminated"):
+        AppendOnlyJsonlRecorder(path)
