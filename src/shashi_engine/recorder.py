@@ -6,6 +6,7 @@ or silently repairs prior records. No credentials or private account data are us
 from __future__ import annotations
 
 import json
+import os
 import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -30,6 +31,8 @@ def candle_record(candle: Candle, *, record_type: str, source: str) -> dict[str,
         raise ValueError("unsupported canonical candle record type")
     if source not in ("websocket", "rest"):
         raise ValueError("candle source must be websocket or rest")
+    if (record_type, source) not in (("completed_candle", "websocket"), ("rest_recovery", "rest")):
+        raise ValueError("canonical record type and source do not match")
     return {
         "record_type": record_type,
         "source": source,
@@ -102,17 +105,9 @@ class AppendOnlyJsonlRecorder:
                     handle.flush()
                 # Best-effort durability: reopen and fsync the appended file.
                 with self.path.open("rb") as handle:
-                    import os
                     os.fsync(handle.fileno())
             except OSError as exc:
                 raise RecorderError(f"cannot append local record: {exc}") from exc
-            stamp = payload.get("candle_start_utc")
-            if payload["record_type"] in ("completed_candle", "rest_recovery") and isinstance(stamp, str):
-                self._known_starts.add(stamp)
-                parsed = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
-                if self._latest_start is None or parsed > self._latest_start:
-                    self._latest_start = parsed
-
     def append_candle(self, candle: Candle, *, record_type: str, source: str) -> bool:
         """Append a canonical candle once; return False when already recorded."""
         stamp = candle.start_time.isoformat()
@@ -127,7 +122,6 @@ class AppendOnlyJsonlRecorder:
                 with self.path.open("a", encoding="utf-8", newline="\n") as handle:
                     handle.write(line + "\n")
                     handle.flush()
-                import os
                 with self.path.open("rb") as handle:
                     os.fsync(handle.fileno())
             except OSError as exc:
@@ -143,7 +137,8 @@ class AppendOnlyJsonlRecorder:
             return self._latest_start
 
     def has_candle(self, start_time: datetime) -> bool:
-        return start_time.isoformat() in self._known_starts
+        with self._lock:
+            return start_time.isoformat() in self._known_starts
 
 
 def recover_missing_candles(
