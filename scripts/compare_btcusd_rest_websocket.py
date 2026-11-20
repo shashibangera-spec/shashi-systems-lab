@@ -1,8 +1,8 @@
 """Compare one completed BTCUSD 30m WebSocket candle with Delta REST history.
 
-This read-only validation listens until the active WebSocket candle rolls into
-the next 30-minute interval, then fetches the just-completed interval from
-REST and compares OHLCV using Decimal equality. It writes no files.
+The WebSocket candle is identified only by Delta's explicit candle-start field
+(cst), not by its event/publish timestamp. The script waits for cst to advance,
+then compares the completed candle with REST. It writes no files.
 """
 from __future__ import annotations
 
@@ -26,13 +26,17 @@ REST_RETRY_COUNT = 4
 REST_RETRY_DELAY_SECONDS = 2
 
 
-def candle_start_epoch(event_time_utc: str) -> int:
-    """Map Delta's event/publish timestamp to its UTC 30-minute candle bucket."""
-    event_time = datetime.fromisoformat(event_time_utc.replace("Z", "+00:00"))
-    if event_time.tzinfo is None:
-        event_time = event_time.replace(tzinfo=timezone.utc)
-    epoch = int(event_time.astimezone(timezone.utc).timestamp())
-    return (epoch // INTERVAL_SECONDS) * INTERVAL_SECONDS
+def candle_start_epoch(candle_start_time_utc: str) -> int:
+    """Parse Delta's explicit candle-start timestamp; never infer it from event time."""
+    if candle_start_time_utc == "not_provided":
+        raise ValueError("Delta WebSocket message is missing explicit candle start (cst)")
+    candle_start = datetime.fromisoformat(candle_start_time_utc.replace("Z", "+00:00"))
+    if candle_start.tzinfo is None:
+        candle_start = candle_start.replace(tzinfo=timezone.utc)
+    epoch = int(candle_start.astimezone(timezone.utc).timestamp())
+    if epoch % INTERVAL_SECONDS:
+        raise ValueError("Delta WebSocket candle start is not aligned to a UTC 30m boundary")
+    return epoch
 
 
 def compare_ohlcv(websocket_candle: dict[str, str], rest_candle: Any) -> dict[str, bool]:
@@ -89,7 +93,7 @@ def main() -> int:
             parsed = parse_candle_message(decoded)
             if parsed is None:
                 return
-            bucket = candle_start_epoch(parsed["event_time_utc"])
+            bucket = candle_start_epoch(parsed["candle_start_time_utc"])
             if active_bucket is None:
                 active_bucket = bucket
                 latest = parsed
