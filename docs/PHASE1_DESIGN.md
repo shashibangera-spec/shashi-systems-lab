@@ -146,3 +146,17 @@ The demo REST/WebSocket URLs recorded in early planning notes have not yet been 
 ## Public repository hygiene
 
 This repository is public by user choice. Do not commit secrets, credentials, private account information, personal identifiers, raw private API responses, or logs that may contain them. No secrets file should be tracked. Use `.env.example` only for placeholder variable names if needed later.
+
+
+### REST-versus-WebSocket completed-candle consistency check
+
+After the short WebSocket probe succeeds, run `scripts/compare_btcusd_rest_websocket.py` to validate one fully completed 30-minute candle. This bounded read-only check waits for the WebSocket to roll into the next UTC 30-minute bucket, retains the final update for the prior bucket, then retrieves that exact candle from REST and compares open, high, low, close and volume with Decimal equality. It may wait up to 40 minutes depending on when it is started. A missing REST candle after bounded retries or a skipped WebSocket interval is reported as inconclusive; a field difference is reported as a mismatch. Neither outcome is silently repaired or treated as a pass.
+
+Run:
+
+```bash
+python -m pytest -q
+python scripts/compare_btcusd_rest_websocket.py
+```
+
+A `MATCH` is the acceptance result for this one sampled candle only. It does not establish long-term feed reliability or authorize persistence, strategy logic, or order execution.
