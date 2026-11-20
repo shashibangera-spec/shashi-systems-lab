@@ -42,12 +42,14 @@ class FeedHealthMonitor:
     def _transition(self, new_state: str, at: datetime) -> None:
         _utc(at)
         callback = None
+        last_message = None
         with self._lock:
             if new_state != self._state:
                 self._state = new_state
                 callback = self.on_transition
+                last_message = self._last_message_at
         if callback is not None:
-            callback(new_state, at, self._last_message_at)
+            callback(new_state, at, last_message)
 
     def connected(self, at: datetime) -> None:
         _utc(at)
