@@ -80,3 +80,13 @@ def test_empty_series_is_not_acceptable() -> None:
 def test_quality_checker_requires_utc_as_of() -> None:
     with pytest.raises(ValueError, match="UTC"):
         inspect_candle_series([candle(0)], as_of=datetime(2026, 11, 20, 21, 0))
+
+
+
+def test_future_candle_interval_is_rejected() -> None:
+    report = inspect_candle_series(
+        [candle(0)],
+        as_of=T0 + timedelta(minutes=10),
+    )
+    assert report.future_data
+    assert not report.acceptable
