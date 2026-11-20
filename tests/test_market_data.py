@@ -3,6 +3,7 @@ from decimal import Decimal
 
 import pytest
 
+from shashi_engine.models import Candle
 from shashi_engine.market_data import (
     MarketDataError,
     parse_candles,
@@ -42,7 +43,7 @@ def test_parse_candles_preserves_source_order_and_checks_ohlcv():
     candles = parse_candles(rows)
     assert candles[0].start_time > candles[1].start_time
     assert candles[0].resolution == "30m"
-    assert isinstance(candles[0], __import__("shashi_engine.models", fromlist=["Candle"]).Candle)
+    assert isinstance(candles[0], Candle)
     assert candles[0].volume == Decimal("4")
 
 
