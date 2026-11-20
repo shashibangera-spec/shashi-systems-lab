@@ -4,7 +4,7 @@
 
 Build a standalone Python application for Delta Exchange India's BTCUSD perpetual contract. Phase 1 is read-only: verify the instrument and consume public market data. It must not authenticate to a trading account or submit orders.
 
-## BTCUSD contract facts — documentation verified, API runtime pending
+## BTCUSD contract facts — live API verified on 2026-11-20
 
 Official Delta Exchange India contract specifications and help articles currently document:
 
@@ -27,20 +27,36 @@ Sources:
 - https://www.delta.exchange/support/solutions?articleId=80001141030
 - https://docs.delta.exchange/
 
-These are documented facts, not a substitute for current runtime verification. Do not treat maximum leverage as a recommendation.
+User-run public API verification succeeded on 2026-11-20 at 20:37:14 UTC: product 27, BTCUSD, live/operational, 0.001 BTC per lot, $0.50 tick, USD quote and API settling asset, 28,800-second funding interval, minimum one whole-number lot. The user's local test run reported 14 passed. The INR/USD margin-settlement discrepancy remains unresolved; do not treat maximum leverage as a recommendation.
 
 ## Current implementation
 
-`src/shashi_engine/contract_verification.py` performs a public unauthenticated GET to Delta India's `/v2/products` endpoint, selects BTCUSD and validates its identity, state, contract type, contract value, unit, tick, quote asset and funding interval. It records minimum order as one whole lot based on Delta's help-centre documentation. It deliberately does not infer margin currency.
+`src/shashi_engine/market_data.py` adds an unauthenticated REST adapter for the BTCUSD ticker and 30-minute historical candles, with Decimal normalization and basic OHLCV validation. The historical candle endpoint accepts Unix `start` and `end` timestamps in seconds and supports up to 2,000 candles per response. `scripts/read_btcusd_ticker.py` prints a single public ticker snapshot. `scripts/read_btcusd_candles.py` fetches a bounded 48-hour sample of 30-minute candles and reports timestamp alignment, duplicates, gaps, candle completeness and representative OHLCV values. The scripts do not save raw API responses.
 
 Run locally from the repository root:
 
 ```bash
 python scripts/verify_btcusd_contract.py
+python scripts/read_btcusd_ticker.py
+python scripts/read_btcusd_candles.py
+python -m pytest -q
 ```
 
-A successful run prints a timestamped JSON report. A failed request or unexpected required field exits non-zero. The verifier has no private API authentication or order methods.
+The candle script is a live public-data validation step. Review its output for the expected approximate 96 intervals, no duplicate or misaligned timestamps, no unexplained gaps, valid OHLCV, and whether the latest returned candle is complete. A gap or incomplete latest candle is reported for review rather than silently filled or treated as a completed bar.
 
+Do not commit live response dumps. Review returned fields and timestamps locally.
+### Public WebSocket probe
+
+The official India public WebSocket endpoint is `wss://public-socket.india.delta.exchange`. The current public `candlesticks` channel supports `candlestick_30m` and a BTCUSD symbol subscription without authentication. `scripts/probe_btcusd_websocket.py` is a bounded 90-second probe: it subscribes only to BTCUSD 30-minute traded-price candles, validates received OHLCV events and the explicit candle-start field (Delta compact key `cst`, Unix microseconds) when present, uses WebSocket ping/pong, and prints a summary. It does not persist data or connect to private channels.
+
+Install the optional client and run:
+
+```bash
+pip install -e '.[market-data]'
+python scripts/probe_btcusd_websocket.py
+```
+
+A successful probe should receive at least one BTCUSD candle update with a valid timestamp and OHLC values. A 90-second timeout with no event is inconclusive, not proof that the feed is unavailable. Do not subscribe to private channels or provide credentials.
 ## Architecture
 
 ```
@@ -130,3 +146,17 @@ The demo REST/WebSocket URLs recorded in early planning notes have not yet been 
 ## Public repository hygiene
 
 This repository is public by user choice. Do not commit secrets, credentials, private account information, personal identifiers, raw private API responses, or logs that may contain them. No secrets file should be tracked. Use `.env.example` only for placeholder variable names if needed later.
+
+
+### REST-versus-WebSocket completed-candle consistency check
+
+After the short WebSocket probe succeeds, run `scripts/compare_btcusd_rest_websocket.py` to validate one fully completed 30-minute candle. This bounded read-only check waits for the WebSocket to roll into the next UTC 30-minute bucket, retains the final update for the prior bucket, then retrieves that exact candle from REST and compares open, high, low, close and volume with Decimal equality. The bucket is selected exclusively from the WebSocket `cst` candle-start timestamp (or descriptive `candle_start_time` alias), never from the event/publish timestamp `ts`. If the explicit candle-start field is missing or not aligned to a UTC 30-minute boundary, the check fails closed. It may wait up to 40 minutes depending on when it is started. A missing REST candle after bounded retries or a skipped WebSocket interval is reported as inconclusive; a field difference is reported as a mismatch. Neither outcome is silently repaired or treated as a pass.
+
+Run:
+
+```bash
+python -m pytest -q
+python scripts/compare_btcusd_rest_websocket.py
+```
+
+A `MATCH` is the acceptance result for this one sampled candle only. It does not establish long-term feed reliability or authorize persistence, strategy logic, or order execution.
