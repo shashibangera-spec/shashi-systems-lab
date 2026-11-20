@@ -21,6 +21,18 @@ def test_parse_public_btcusd_30m_candle_message():
     assert parsed["resolution"] == "30m"
     assert parsed["event_time_utc"] == "2026-11-20T18:40:00+00:00"
     assert parsed["candle_start_time_utc"] == "2026-11-20T18:40:00+00:00"
+
+    # The descriptive field has also been emitted as Unix nanoseconds.
+    nanosecond_message = {
+        "type": "candlestick_30m",
+        "sy": "BTCUSD",
+        "ts": 1795200000000000,
+        "candle_start_time": 1795200000000000000,
+        "o": "65000", "h": "65100", "l": "64900", "c": "65050",
+    }
+    parsed_ns = parse_candle_message(nanosecond_message)
+    assert parsed_ns is not None
+    assert parsed_ns["candle_start_time_utc"] == "2026-11-20T18:40:00+00:00"
     assert parsed["close"] == "65050.0"
     assert parsed["volume"] == "12.5"
 
