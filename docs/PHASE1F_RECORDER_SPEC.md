@@ -24,7 +24,8 @@ Only public market data is consumed. No authentication, private channels, API ke
 - Supported record families include `websocket_update`, `completed_candle`, `rest_recovery`, `recovery_report`, `feed_health`, `feed_error` and `recorder_session_end`.
 - Existing history is opened in append mode only. The implementation never truncates, rewrites, sorts, deletes or silently repairs old lines.
 - Canonical completed candles are keyed by UTC candle-start time. A second canonical record for the same start is skipped; original lines remain unchanged.
-- Existing malformed JSON, blank lines or malformed canonical timestamps cause startup to fail closed. The recorder does not try to repair a damaged file.
+- Existing malformed JSON, blank lines, an unterminated final line or malformed canonical timestamps cause startup to fail closed. The recorder does not try to repair a damaged file.
+- Use one recorder process per output file; cross-process locking is not provided.
 - Writes are flushed and fsynced. A process interruption may leave a malformed final line; on next start that condition is surfaced for manual inspection rather than overwritten.
 
 ## Feed-health monitoring
