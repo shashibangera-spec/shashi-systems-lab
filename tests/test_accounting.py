@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta, timezone
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal
 
 import pytest
 
@@ -183,3 +183,37 @@ def test_risk_gate_rejects_inr_before_gate():
     context = RiskContext("INR", Decimal("0"), Decimal("0"), NOW)
     with pytest.raises(ValueError, match="USD-only"):
         evaluate_usd_risk_gate(gate, intent, context)
+
+
+
+def test_fx_at_exact_maximum_age_is_accepted():
+    fx = FxObservation(
+        "USD", "INR", Decimal("90"), NOW - timedelta(minutes=10),
+        "fixture", "verified",
+    )
+    result = calculate_accounting(scenario(fx_observation=fx))
+    assert result.inr_equivalents is not None
+
+
+def test_funding_events_must_follow_eight_hour_cadence():
+    first = FundingEvent(Decimal("0.001"), "long", 1, Decimal("60000"), NOW - timedelta(hours=8), 28800)
+    second = FundingEvent(Decimal("0.001"), "long", 1, Decimal("60000"), NOW, 28800)
+    result = calculate_accounting(scenario(funding_events=(first, second)))
+    assert result.funding_cashflow_usd == Decimal("-0.12")
+    duplicate = FundingEvent(Decimal("0.001"), "long", 1, Decimal("60000"), NOW, 28800)
+    with pytest.raises(ValueError, match="8-hour cadence"):
+        scenario(funding_events=(second, duplicate))
+
+
+def test_usd_adapter_rejects_gate_configured_in_inr():
+    gate = RiskGate(RiskPolicy("INR", Decimal("100000"), Decimal("10000"), Decimal("20000")))
+    intent = RiskIntent("research-gate-inr", "USD", Decimal("60"), Decimal("5"), NOW)
+    context = RiskContext("USD", Decimal("0"), Decimal("0"), NOW)
+    with pytest.raises(ValueError, match="must all be USD"):
+        evaluate_usd_risk_gate(gate, intent, context)
+
+
+def test_internal_decimal_precision_is_not_limited_to_currency_minor_units():
+    price = Decimal("60000.123456789012345678901234567890123456789")
+    result = calculate_accounting(scenario(entry_price=price, exit_price=None, exit_liquidity=None, exit_at=None))
+    assert result.entry_notional_usd == Decimal("60.000123456789012345678901234567890123456789")
