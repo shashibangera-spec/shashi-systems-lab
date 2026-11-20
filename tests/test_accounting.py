@@ -38,7 +38,9 @@ def fees(settlement=Decimal("0.0005")) -> FeeSchedule:
 
 def scenario(**kwargs) -> AccountingScenario:
     base = dict(
-        instrument=instrument(), lots=1, position_side="long",
+        instrument=instrument(), scenario_id="test-scenario",
+        contract_metadata_source="synthetic-contract-fixture",
+        lots=1, position_side="long",
         entry_price=Decimal("60000"), entry_liquidity="maker",
         entry_at=NOW - timedelta(minutes=30), fee_schedule=fees(),
         policy=policy(), as_of=NOW, exit_price=Decimal("61000"),
@@ -76,6 +78,10 @@ def test_fresh_explicit_fx_produces_separate_inr_view():
     assert result.inr_equivalents["entry_notional"] == Decimal("5400")
     assert result.currency == "USD"
     assert result.fx_status == "synthetic"
+    assert result.fx_rate == Decimal("90")
+    assert result.scenario_id == "test-scenario"
+    assert result.contract_product_id == 27
+    assert result.max_fx_age == timedelta(minutes=10)
     assert result.exchange_reconciled is False
 
 
