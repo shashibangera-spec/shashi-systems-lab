@@ -23,6 +23,13 @@ def _require_finite(value: Decimal, field: str) -> None:
         raise ValueError(f"{field} must be a finite Decimal")
 
 
+def is_increment_aligned(value: Decimal, increment: Decimal) -> bool:
+    """Return whether a finite Decimal is an exact multiple of a positive increment."""
+    _require_finite(value, "value")
+    _require_positive(increment, "increment")
+    return value % increment == 0
+
+
 @dataclass(frozen=True, slots=True)
 class Instrument:
     """Contract metadata; API settlement and documented margin fields stay distinct."""
