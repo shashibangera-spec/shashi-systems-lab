@@ -1,7 +1,10 @@
 from decimal import Decimal
+from io import BytesIO
+import json
 
 import pytest
 
+from shashi_engine import contract_verification
 from shashi_engine.contract_verification import (
     ContractVerificationError,
     parse_product,
@@ -62,3 +65,31 @@ def test_rejects_missing_required_field(btcusd_product: dict) -> None:
     del btcusd_product["settling_asset"]
     with pytest.raises(ContractVerificationError):
         parse_product(btcusd_product)
+
+
+def test_fetch_uses_documented_direct_symbol_endpoint(
+    monkeypatch: pytest.MonkeyPatch, btcusd_product: dict
+) -> None:
+    class FakeResponse:
+        def __enter__(self) -> "FakeResponse":
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def read(self) -> bytes:
+            return json.dumps({"success": True, "result": btcusd_product}).encode()
+
+    requested_urls: list[str] = []
+
+    def fake_urlopen(request: object, timeout: int) -> FakeResponse:
+        requested_urls.append(request.full_url)  # type: ignore[attr-defined]
+        return FakeResponse()
+
+    monkeypatch.setattr(contract_verification, "urlopen", fake_urlopen)
+    result = contract_verification.fetch_btcusd_product()
+
+    assert result["symbol"] == "BTCUSD"
+    assert requested_urls == [
+        "https://api.india.delta.exchange/v2/products/BTCUSD"
+    ]
