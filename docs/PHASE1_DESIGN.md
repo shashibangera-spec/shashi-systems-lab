@@ -160,3 +160,14 @@ python scripts/compare_btcusd_rest_websocket.py
 ```
 
 A `MATCH` is the acceptance result for this one sampled candle only. It does not establish long-term feed reliability or authorize persistence, strategy logic, or order execution.
+
+
+## Phase 1C — Domain models and data quality
+
+Phase 1C adds immutable, validated domain models for the instrument, ticker, funding observation and BTCUSD 30-minute OHLCV candle. Monetary and quantity values remain `Decimal`; no float conversion or lot-size/order-quantity conversion is performed by these models.
+
+The instrument model deliberately stores `api_settlement_asset`, `documented_margin_currency` and `documented_effective_settlement_currency` as separate fields. The two documentation fields remain unset unless explicitly supplied from an identified source. An API value of USD is never used to infer an INR margin or effective settlement currency.
+
+Candle validation requires a timezone-aware UTC half-hour start timestamp, positive finite OHLC values, non-negative finite volume, and internally consistent high/low relationships. The data-quality inspector reports duplicate starts, out-of-order input, missing 30-minute intervals and stale completed data. It does not sort the input, fill gaps, deduplicate records or otherwise repair observations. Any detected defect makes the report unacceptable.
+
+Validation is local and synthetic; Phase 1C adds no live API calls, persistent recorder, database integration, strategy logic, account access or order routes.
