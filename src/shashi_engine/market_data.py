@@ -53,16 +53,36 @@ def _decimal(value: Any, field: str, *, optional: bool = False) -> Decimal | Non
 
 
 def _timestamp(value: Any, field: str) -> datetime:
+    """Parse ISO timestamps or Unix epochs in seconds, milliseconds, microseconds or nanoseconds."""
     if isinstance(value, datetime):
         result = value
-    elif isinstance(value, (int, float)) or (isinstance(value, str) and value.isdigit()):
-        numeric = float(value)
-        if numeric > 10_000_000_000:
-            numeric /= 1000
-        result = datetime.fromtimestamp(numeric, tz=timezone.utc)
+    elif isinstance(value, (int, float, Decimal)) or (
+        isinstance(value, str) and value.strip().replace(".", "", 1).isdigit()
+    ):
+        try:
+            numeric = Decimal(str(value).strip())
+        except InvalidOperation as exc:
+            raise MarketDataError(f"Invalid timestamp field: {field}") from exc
+        if not numeric.is_finite() or numeric <= 0:
+            raise MarketDataError(f"Invalid timestamp field: {field}")
+
+        # Infer the epoch unit from its magnitude. Contemporary Unix epochs
+        # are approximately 1e9 (seconds), 1e12 (milliseconds), 1e15
+        # (microseconds), or 1e18 (nanoseconds).
+        if numeric >= Decimal("1e17"):
+            numeric /= Decimal("1e9")
+        elif numeric >= Decimal("1e14"):
+            numeric /= Decimal("1e6")
+        elif numeric >= Decimal("1e11"):
+            numeric /= Decimal("1e3")
+
+        try:
+            result = datetime.fromtimestamp(float(numeric), tz=timezone.utc)
+        except (OverflowError, OSError, ValueError) as exc:
+            raise MarketDataError(f"Timestamp is outside the supported range: {field}") from exc
     elif isinstance(value, str):
         try:
-            result = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            result = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
         except ValueError as exc:
             raise MarketDataError(f"Invalid timestamp field: {field}") from exc
     else:
@@ -70,7 +90,6 @@ def _timestamp(value: Any, field: str) -> datetime:
     if result.tzinfo is None:
         result = result.replace(tzinfo=timezone.utc)
     return result.astimezone(timezone.utc)
-
 
 def _request_json(path: str, params: dict[str, str] | None = None, timeout: int = 10) -> Any:
     query = f"?{urlencode(params)}" if params else ""
