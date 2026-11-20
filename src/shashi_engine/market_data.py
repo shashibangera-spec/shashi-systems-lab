@@ -150,7 +150,7 @@ def parse_candles(payload: Any, resolution: str = "30m") -> list[OHLCVCandle]:
                 )
             )
         except ValueError as exc:
-            raise MarketDataError(f"Candle row {index} failed domain validation: {exc}") from exc
+            raise MarketDataError(f"Candle row {index} failed OHLCV/domain validation: {exc}") from exc
     # Preserve exchange response order so the quality layer can detect bad ordering.
     return candles
 
