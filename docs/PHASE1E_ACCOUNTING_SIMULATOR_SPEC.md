@@ -143,14 +143,16 @@ A report with incomplete FX or fee-currency assumptions may still show USD-only 
 - Never commit credentials, account identifiers, private data or raw account exports.
 - Keep simulator separate from the existing BTC dashboard project.
 
-## 9. Implementation gates
+## 9. Approved conventions and remaining caveats
 
-Implementation may begin only after review of this specification and explicit approval of the unresolved assumptions, especially:
-- FX source, freshness and whether synthetic FX is acceptable for INR scenario testing;
-- fee/GST denomination and conversion treatment;
-- settlement-fee trigger and notional basis;
-- funding sign convention and notional basis;
-- rounding precision and point of quantization;
-- whether risk policy should be USD-only initially or support both USD and INR.
+The following conventions are approved and implemented in the Phase 1E branch:
+- RiskGate is USD-only; INR equivalents are display-only and never passed to RiskGate.
+- Every INR conversion requires an explicit timestamped USD/INR observation, source/provenance, and explicitly configured maximum age. There is no default age or ₹85 fallback. Missing, stale, future-dated, or invalid observations suppress INR output while USD calculations continue.
+- Settlement fee applies only when held through expiry/settlement and is calculated on supplied settlement notional at an explicit configured rate.
+- Funding: positive rate means longs pay shorts; negative rate means shorts pay longs; use mark-price notional at each 8-hour contract funding interval.
+- Full Decimal precision is retained internally; quantization is confined to explicit reporting/ledger boundaries.
 
-No demo or live execution is part of Phase 1E.
+Remaining limitations:
+- Fee/GST booking currency and exchange-specific rounding have not been independently reconciled against an authoritative account/API example. USD fee/GST denomination is an explicit scenario assumption; outputs are not exchange-reconciled.
+- FX is supplied by the caller. No live FX feed or account integration is included.
+- No demo or live execution, margin, leverage, liquidation, position sizing, tax calculation, or private account access is in scope.
