@@ -59,3 +59,25 @@ def test_parse_candles_rejects_negative_volume():
     ]
     with pytest.raises(MarketDataError, match="OHLCV"):
         parse_candles(rows)
+
+
+@pytest.mark.parametrize(
+    ("epoch", "expected"),
+    [
+        (1795200000, "2026-11-20T00:00:00+00:00"),
+        (1795200000000, "2026-11-20T00:00:00+00:00"),
+        (1795200000000000, "2026-11-20T00:00:00+00:00"),
+        (1795200000000000000, "2026-11-20T00:00:00+00:00"),
+        ("1795200000000000", "2026-11-20T00:00:00+00:00"),
+    ],
+)
+def test_ticker_accepts_epoch_seconds_milliseconds_microseconds_and_nanoseconds(epoch, expected):
+    ticker = parse_ticker({"symbol": "BTCUSD", "timestamp": epoch})
+    assert ticker.observed_at.isoformat() == expected
+
+
+def test_timestamp_rejects_out_of_range_epoch():
+    from shashi_engine.market_data import _timestamp
+
+    with pytest.raises(MarketDataError, match="outside the supported range"):
+        _timestamp("999999999999999999999999", "timestamp")
