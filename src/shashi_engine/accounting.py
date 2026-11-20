@@ -217,11 +217,31 @@ def _inr_view(
     return converted, observation.status, observation.source, observation.observed_at
 
 
+def _calculation_precision(scenario: AccountingScenario) -> int:
+    """Choose enough Decimal context precision for all finite products and sums."""
+    values = [
+        scenario.instrument.contract_value, scenario.entry_price,
+        scenario.fee_schedule.maker_rate, scenario.fee_schedule.taker_rate,
+        scenario.fee_schedule.gst_rate,
+    ]
+    if scenario.exit_price is not None:
+        values.append(scenario.exit_price)
+    if scenario.settlement_notional_usd is not None:
+        values.append(scenario.settlement_notional_usd)
+    if scenario.fee_schedule.settlement_fee_rate is not None:
+        values.append(scenario.fee_schedule.settlement_fee_rate)
+    if scenario.fx_observation is not None:
+        values.append(scenario.fx_observation.rate)
+    for event in scenario.funding_events:
+        values.extend((event.rate, event.mark_price, scenario.instrument.contract_value))
+    return max(50, sum(len(value.as_tuple().digits) for value in values) + len(scenario.funding_events) + 20)
+
+
 def calculate_accounting(scenario: AccountingScenario) -> AccountingBreakdown:
     """Calculate a synthetic scenario; never contacts an exchange or account."""
     instrument = scenario.instrument
     with localcontext() as ctx:
-        ctx.prec = max(ctx.prec, 50)
+        ctx.prec = max(ctx.prec, _calculation_precision(scenario))
         btc_qty = Decimal(scenario.lots) * instrument.contract_value
         entry_notional = btc_qty * scenario.entry_price
         entry_fee, entry_gst = _fee(entry_notional, scenario.entry_liquidity, scenario.fee_schedule)
@@ -293,7 +313,9 @@ def reporting_amount(value: Decimal, policy: AccountingPolicy) -> Decimal:
     """Round only when producing a reporting/ledger boundary value."""
     _finite(value, "reporting value")
     quantum = Decimal(1).scaleb(-policy.reporting_decimal_places)
-    return value.quantize(quantum, rounding=policy.rounding)
+    with localcontext() as ctx:
+        ctx.prec = max(ctx.prec, len(value.as_tuple().digits) + policy.reporting_decimal_places + 4)
+        return value.quantize(quantum, rounding=policy.rounding)
 
 
 def evaluate_usd_risk_gate(
