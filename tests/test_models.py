@@ -3,7 +3,7 @@ from decimal import Decimal
 
 import pytest
 
-from shashi_engine.models import Candle, FundingObservation, Instrument, Ticker
+from shashi_engine.models import Candle, FundingObservation, Instrument, Ticker, is_increment_aligned
 
 
 NOW = datetime(2026, 11, 20, 21, 30, tzinfo=timezone.utc)
@@ -95,3 +95,16 @@ def test_candle_rejects_naive_or_unaligned_timestamp() -> None:
         make_candle(start=datetime(2026, 11, 20, 21, 0))
     with pytest.raises(ValueError, match="half-hour"):
         make_candle(start=datetime(2026, 11, 20, 21, 15, tzinfo=timezone.utc))
+
+
+
+def test_decimal_increment_alignment_preserves_tick_and_lot_precision() -> None:
+    assert is_increment_aligned(Decimal("58614.5"), Decimal("0.5"))
+    assert not is_increment_aligned(Decimal("58614.25"), Decimal("0.5"))
+    assert is_increment_aligned(Decimal("0.003"), Decimal("0.001"))
+    assert not is_increment_aligned(Decimal("0.0015"), Decimal("0.001"))
+
+
+def test_increment_alignment_rejects_invalid_increment() -> None:
+    with pytest.raises(ValueError, match="increment"):
+        is_increment_aligned(Decimal("1"), Decimal("0"))
