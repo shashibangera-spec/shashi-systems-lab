@@ -362,5 +362,5 @@ def evaluate_usd_risk_gate(
 ) -> RiskDecision:
     """Call the existing gate only when every monetary input is explicitly USD."""
     if gate.currency != "USD" or intent.currency != "USD" or context.currency != "USD":
-        raise ValueError("Phase 1E RiskGate is USD-only: policy, intent, and context must all use USD")
+        raise ValueError("Phase 1E RiskGate is USD-only: policy, intent, and context must all be USD")
     return gate.evaluate(intent, context)
