@@ -100,6 +100,7 @@ def run_recorder(
             update = parse_candle_message(decoded)
             if update is None:
                 return
+            was_stale = monitor.state == "STALE"
             if update["candle_start_time_utc"] == "not_provided":
                 raise ValueError("WebSocket candle is missing explicit cst candle-start timestamp")
             candle = _to_candle(update)
@@ -118,7 +119,7 @@ def run_recorder(
                 if previous_bucket is not None and bucket == previous_bucket:
                     latest_update = update
                     return
-                if previous_bucket is not None and previous_update is not None:
+                if previous_bucket is not None and previous_update is not None and not was_stale:
                     final_candle = _to_candle(previous_update)
                     recorder.append_candle(final_candle, record_type="completed_candle", source="websocket")
                 last = recorder.latest_candle_start
@@ -142,11 +143,19 @@ def run_recorder(
             ws.close()
 
     def on_error(ws: Any, error: Any) -> None:
+        nonlocal latest_update, active_bucket
         errors.append(str(error))
         monitor.disconnected(datetime.now(timezone.utc))
+        with state_lock:
+            latest_update = None
+            active_bucket = None
 
     def on_close(ws: Any, status: Any, message: Any) -> None:
+        nonlocal latest_update, active_bucket
         monitor.disconnected(datetime.now(timezone.utc))
+        with state_lock:
+            latest_update = None
+            active_bucket = None
 
     try:
         while time.monotonic() < stop_at:
