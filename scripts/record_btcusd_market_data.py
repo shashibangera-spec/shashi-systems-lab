@@ -10,6 +10,7 @@ import json
 import threading
 import time
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from typing import Any
 
 from shashi_engine.feed_health import FeedHealthMonitor
@@ -29,7 +30,6 @@ def _to_candle(update: dict[str, str]) -> Candle:
     start = datetime.fromisoformat(update["candle_start_time_utc"].replace("Z", "+00:00"))
     if start.tzinfo is None:
         raise ValueError("WebSocket candle start must include UTC timezone")
-    from decimal import Decimal
     if update["volume"] == "not_provided":
         raise ValueError("WebSocket update is missing volume")
     return Candle(
