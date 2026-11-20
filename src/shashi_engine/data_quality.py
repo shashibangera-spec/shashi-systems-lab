@@ -15,6 +15,7 @@ class DataQualityReport:
     out_of_order_pairs: tuple[tuple[datetime, datetime], ...]
     missing_intervals: int
     stale: bool
+    future_data: bool
     age_at_check: timedelta | None
 
     @property
@@ -25,6 +26,7 @@ class DataQualityReport:
             and not self.out_of_order_pairs
             and self.missing_intervals == 0
             and not self.stale
+            and not self.future_data
         )
 
 
@@ -40,7 +42,7 @@ def inspect_candle_series(
     if max_age < timedelta(0):
         raise ValueError("max_age must not be negative")
     if not candles:
-        return DataQualityReport(0, (), (), 0, True, None)
+        return DataQualityReport(0, (), (), 0, True, False, None)
 
     starts = [candle.start_time for candle in candles]
     seen: set[datetime] = set()
@@ -69,11 +71,13 @@ def inspect_candle_series(
     latest_end = max(candle.end_time for candle in candles)
     age = as_of - latest_end
     stale = age > max_age
+    future_data = age < timedelta(0)
     return DataQualityReport(
         candle_count=len(candles),
         duplicate_starts=tuple(duplicates),
         out_of_order_pairs=out_of_order,
         missing_intervals=missing,
         stale=stale,
+        future_data=future_data,
         age_at_check=age,
     )
