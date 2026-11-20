@@ -27,4 +27,4 @@ This repository is public. Never commit API keys, credentials, account identifie
 
 ## Project status
 
-See [Phase 1 design](docs/PHASE1_DESIGN.md). The initial scaffold is documentation and safe interfaces only; it does not place orders.
+See [Phase 1 design](docs/PHASE1_DESIGN.md). Phase 1A currency/fee research is documented in [Phase 1A closure](docs/PHASE1A_CURRENCY_AND_FEES.md); non-executing controls are documented in [Phase 1D](docs/PHASE1D_RISK_CONTROLS.md). The repository does not place orders.
