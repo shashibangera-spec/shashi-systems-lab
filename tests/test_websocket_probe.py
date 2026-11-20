@@ -8,6 +8,7 @@ def test_parse_public_btcusd_30m_candle_message():
             "sy": "BTCUSD",
             "res": "30m",
             "ts": 1795200000000000,
+            "cst": 1795200000000000,
             "o": "65000.0",
             "h": "65100.0",
             "l": "64900.0",
@@ -19,6 +20,7 @@ def test_parse_public_btcusd_30m_candle_message():
     assert parsed["symbol"] == "BTCUSD"
     assert parsed["resolution"] == "30m"
     assert parsed["event_time_utc"] == "2026-11-20T18:40:00+00:00"
+    assert parsed["candle_start_time_utc"] == "2026-11-20T18:40:00+00:00"
     assert parsed["close"] == "65050.0"
     assert parsed["volume"] == "12.5"
 
@@ -37,6 +39,7 @@ def test_parse_rejects_inconsistent_ohlc():
         "type": "candlestick_30m",
         "sy": "BTCUSD",
         "ts": 1795200000000000,
+        "cst": 1795200000000000,
         "o": "65000",
         "h": "64900",
         "l": "64800",
