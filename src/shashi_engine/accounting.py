@@ -168,11 +168,19 @@ class AccountingScenario:
                 raise ValueError("settlement fee rate is required when held through settlement")
         elif self.settlement_notional_usd is not None:
             raise ValueError("settlement notional supplied but scenario is not held through settlement")
+        previous_event: FundingEvent | None = None
         for event in self.funding_events:
             if event.interval_seconds != self.instrument.funding_interval_seconds:
                 raise ValueError("funding interval must match contract metadata")
-            if event.event_at > self.as_of:
-                raise ValueError("funding event cannot be in the future")
+            if event.event_at < self.entry_at or event.event_at > self.as_of:
+                raise ValueError("funding event must occur while scenario position is open")
+            if self.exit_at is not None and event.event_at > self.exit_at:
+                raise ValueError("funding event cannot occur after scenario exit")
+            if previous_event is not None:
+                elapsed = (event.event_at - previous_event.event_at).total_seconds()
+                if elapsed <= 0 or elapsed % self.instrument.funding_interval_seconds != 0:
+                    raise ValueError("funding events must be ordered on the contract 8-hour cadence")
+            previous_event = event
 
 
 @dataclass(frozen=True, slots=True)
@@ -314,7 +322,11 @@ def reporting_amount(value: Decimal, policy: AccountingPolicy) -> Decimal:
     _finite(value, "reporting value")
     quantum = Decimal(1).scaleb(-policy.reporting_decimal_places)
     with localcontext() as ctx:
-        ctx.prec = max(ctx.prec, len(value.as_tuple().digits) + policy.reporting_decimal_places + 4)
+        required_precision = max(
+            len(value.as_tuple().digits),
+            value.adjusted() + policy.reporting_decimal_places + 2,
+        ) + 4
+        ctx.prec = max(ctx.prec, required_precision)
         return value.quantize(quantum, rounding=policy.rounding)
 
 
@@ -322,6 +334,6 @@ def evaluate_usd_risk_gate(
     gate: RiskGate, intent: RiskIntent, context: RiskContext,
 ) -> RiskDecision:
     """Call the existing gate only when every monetary input is explicitly USD."""
-    if intent.currency != "USD" or context.currency != "USD":
-        raise ValueError("Phase 1E RiskGate integration is USD-only")
+    if gate.currency != "USD" or intent.currency != "USD" or context.currency != "USD":
+        raise ValueError("Phase 1E RiskGate policy, intent and context must all be USD")
     return gate.evaluate(intent, context)
