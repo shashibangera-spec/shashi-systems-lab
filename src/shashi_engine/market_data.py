@@ -6,7 +6,7 @@ credential, private-account, or order-submission code.
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, dataclass
+from dataclasses import asdict
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any
@@ -14,7 +14,7 @@ from urllib.error import URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
-from .models import Ticker
+from .models import Candle, Ticker
 
 BASE_URL = "https://api.india.delta.exchange"
 USER_AGENT = "shashi-systems-lab/0.1"
@@ -24,16 +24,8 @@ class MarketDataError(RuntimeError):
     """Raised when a public market-data request or payload is invalid."""
 
 
-@dataclass(frozen=True, slots=True)
-class OHLCVCandle:
-    symbol: str
-    resolution: str
-    start_time: datetime
-    open: Decimal
-    high: Decimal
-    low: Decimal
-    close: Decimal
-    volume: Decimal
+# Backwards-compatible name; all REST candle parsing returns the shared validated model.
+OHLCVCandle = Candle
 
 
 def _decimal(value: Any, field: str, *, optional: bool = False) -> Decimal | None:
@@ -144,21 +136,23 @@ def parse_candles(payload: Any, resolution: str = "30m") -> list[OHLCVCandle]:
         volume = _decimal(row.get("volume", 0), f"candles[{index}].volume")
         assert opening is not None and high is not None and low is not None
         assert close is not None and volume is not None
-        if high < max(opening, close, low) or low > min(opening, close, high) or volume < 0:
-            raise MarketDataError(f"Candle row {index} has invalid OHLCV relationships")
-        candles.append(
-            OHLCVCandle(
-                symbol="BTCUSD",
-                resolution=resolution,
-                start_time=_timestamp(stamp, f"candles[{index}].time"),
-                open=opening,
-                high=high,
-                low=low,
-                close=close,
-                volume=volume,
+        try:
+            candles.append(
+                Candle(
+                    symbol="BTCUSD",
+                    resolution=resolution,
+                    start_time=_timestamp(stamp, f"candles[{index}].time"),
+                    open=opening,
+                    high=high,
+                    low=low,
+                    close=close,
+                    volume=volume,
+                )
             )
-        )
-    return sorted(candles, key=lambda candle: candle.start_time)
+        except ValueError as exc:
+            raise MarketDataError(f"Candle row {index} failed domain validation: {exc}") from exc
+    # Preserve exchange response order so the quality layer can detect bad ordering.
+    return candles
 
 
 def fetch_ticker(timeout: int = 10) -> Ticker:
