@@ -4,7 +4,7 @@
 
 Build a standalone Python application for Delta Exchange India's BTCUSD perpetual contract. Phase 1 is read-only: verify the instrument and consume public market data. It must not authenticate to a trading account or submit orders.
 
-## BTCUSD contract facts — documentation verified, API runtime pending
+## BTCUSD contract facts — live API verified on 2026-11-20
 
 Official Delta Exchange India contract specifications and help articles currently document:
 
@@ -27,7 +27,7 @@ Sources:
 - https://www.delta.exchange/support/solutions?articleId=80001141030
 - https://docs.delta.exchange/
 
-These are documented facts, not a substitute for current runtime verification. Do not treat maximum leverage as a recommendation.
+User-run public API verification succeeded on 2026-11-20 at 20:37:14 UTC: product 27, BTCUSD, live/operational, 0.001 BTC per lot, $0.50 tick, USD quote and API settling asset, 28,800-second funding interval, minimum one whole-number lot. The user's local test run reported 14 passed. The INR/USD margin-settlement discrepancy remains unresolved; do not treat maximum leverage as a recommendation.
 
 ## Current implementation
 
@@ -41,7 +41,7 @@ python scripts/verify_btcusd_contract.py
 
 A successful run prints a timestamped JSON report. A failed request or unexpected required field exits non-zero. The verifier has no private API authentication or order methods.
 
-## Architecture
+## Current Phase 1B implementation\n\n`src/shashi_engine/market_data.py` adds an unauthenticated REST adapter for the BTCUSD ticker and 30-minute historical candles, with Decimal normalization and basic OHLCV validation. `scripts/read_btcusd_ticker.py` prints a single read-only ticker snapshot. `tests/test_market_data.py` covers parsing and malformed payloads. The adapter is implemented but has not yet been run against the live ticker/candle endpoints or through the user's local test suite.\n\nRun locally:\n\n```bash\npython scripts/read_btcusd_ticker.py\npython -m pytest -q\n```\n\nDo not commit live response dumps. Review the returned fields and timestamps locally.\n\n## Architecture
 
 ```
 Delta public REST / public WebSocket
