@@ -553,6 +553,8 @@ def test_pullback_entry_recalculates_first_target_rr_from_actual_fill(monkeypatc
     assert len(result.skipped_low_first_target_rr) == 1
     assert result.skipped_low_first_target_rr[0].entry_price == Decimal("60000")
     assert result.skipped_low_first_target_rr[0].first_target_rr == Decimal("0.5")
+    assert result.pullback_orders_filled == 1
+    assert result.pullback_orders_accepted == 0
     assert result.pullback_orders_rejected_low_rr == 1
 
 
@@ -565,8 +567,32 @@ def test_pullback_limit_uses_open_price_if_market_gaps_through_limit(monkeypatch
     result = _pullback_test_run(monkeypatch, gap_bar)
     assert result.pullback_orders_filled == 1
     assert result.trades[0].entry_price == Decimal("59980")
+    assert result.trades[0].entry_liquidity == "taker"
+    assert result.pullback_orders_gap_through == 1
+    assert result.pullback_orders_filled_at_limit == 0
 
 
 def test_pullback_limit_bars_must_be_positive():
     with pytest.raises(ValueError, match="pullback_limit_bars"):
         BacktestConfig(pullback_entry=True, pullback_limit_bars=0)
+
+
+def test_pullback_maker_flag_charges_maker_only_for_resting_limit_fill(monkeypatch):
+    import shashi_engine.amt_pa_backtest as engine
+    from shashi_engine.amt_pa_backtest import SessionProfile
+    bars = session_candles(date(2026, 11, 20))[:17]
+    bars[14] = Candle("BTCUSD", "30m", bars[14].start_time, Decimal("60020"), Decimal("60060"), Decimal("59950"), Decimal("60040"), Decimal("1"))
+    injected = Signal(13, "A_FAILED_AUCTION", "long", Decimal("60000"), Decimal("59900"), Decimal("60050"), "2026-11-19_POC", Decimal("100"), Decimal("60100"), "2026-11-18_VAH")
+    monkeypatch.setattr(engine, "_signal_at", lambda candles, index, profiles, market_instrument, config: (injected, False) if index == 13 else (None, False))
+    monkeypatch.setattr(engine, "_profile_history", lambda profiles, current, count: [SessionProfile(date(2026, 11, 19), Decimal("60100"), Decimal("60050"), Decimal("59000"), 100, 48)])
+    def run(maker):
+        return engine.run_backtest(bars, instrument(), FeeSchedule(Decimal(".0002"), Decimal(".0005"), Decimal(".18")), AccountingPolicy(timedelta(minutes=10)), config=BacktestConfig(pullback_entry=True, pullback_maker_entry=maker))
+    taker, maker = run(False), run(True)
+    assert len(taker.trades) == len(maker.trades) == 1
+    assert taker.trades[0].entry_price == maker.trades[0].entry_price == Decimal("60000")
+    assert taker.trades[0].entry_liquidity == "taker" and maker.trades[0].entry_liquidity == "maker"
+    assert maker.trades[0].gross_pnl_usd == taker.trades[0].gross_pnl_usd
+    assert maker.trades[0].fees_and_gst_usd < taker.trades[0].fees_and_gst_usd
+    assert maker.pullback_orders_filled == maker.pullback_orders_accepted == 1
+    assert maker.pullback_orders_filled_at_limit == 1 and maker.pullback_orders_gap_through == 0
+    assert maker.pullback_orders_filled == maker.pullback_orders_accepted + maker.pullback_orders_rejected_low_rr + maker.pullback_orders_rejected_no_reference
