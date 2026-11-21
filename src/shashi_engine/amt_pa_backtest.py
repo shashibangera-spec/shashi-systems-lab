@@ -405,7 +405,8 @@ def run_backtest(candles: Sequence[Candle], instrument: Instrument, fee_schedule
                     int(active["trade_id"]), signal, ordered[signal.index].start_time,
                     ordered[signal.index].end_time, active["entry_time"], active["entry_price"], active["partial_time"],
                     active["partial_price"], candle.start_time, active["stop"],
-                    "INITIAL_PROTECTIVE_STOP", config, instrument, fee_schedule,
+                    ("RUNNER_FEE_ADJUSTED_BREAKEVEN" if active["breakeven_activated"]
+                     else "INITIAL_PROTECTIVE_STOP"), config, instrument, fee_schedule,
                     accounting_policy, funding_events, metadata_source,
                 ))
                 active = None
