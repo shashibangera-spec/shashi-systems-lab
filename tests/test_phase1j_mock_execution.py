@@ -259,7 +259,7 @@ def test_mock_module_has_no_exchange_adapter_surface():
 
 def test_entry_fill_without_confirmed_protection_enters_protection_fault():
     machine = ready_machine()
-    machine.transition(State.SIGNAL_PENDING)
+    assert machine.permit_entry("protect-fault", Exposure(0, 0), pnl(), True, True)
     machine.transition(State.ENTRY_WORKING)
     machine.confirm_entry_fill(protective_coverage_confirmed=False)
     assert machine.state is State.PROTECTION_FAULT
@@ -267,7 +267,7 @@ def test_entry_fill_without_confirmed_protection_enters_protection_fault():
 
 def test_entry_fill_cannot_bypass_protection_confirmation():
     machine = ready_machine()
-    machine.transition(State.SIGNAL_PENDING)
+    assert machine.permit_entry("protect-bypass", Exposure(0, 0), pnl(), True, True)
     machine.transition(State.ENTRY_WORKING)
     with pytest.raises(SafetyError, match="verified protection"):
         machine.transition(State.POSITION_OPEN)
