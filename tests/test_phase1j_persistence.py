@@ -192,3 +192,75 @@ def test_intent_records_do_not_contain_credentials(tmp_path):
     )
     assert "key-secret" not in intent.payload_json
     assert "secret-value" not in intent.payload_json
+
+
+
+def test_persisted_loss_evaluation_below_limit_stays_unlatched(tmp_path):
+    db = store(tmp_path)
+    result = db.evaluate_daily_loss(
+        "session", Decimal("-1"), Decimal("0"), Decimal("0"), Decimal("0")
+    )
+    assert not result.latched
+    assert result.limit_usd == Decimal("2.50")
+
+
+def test_persisted_loss_evaluation_latches_at_exact_boundary(tmp_path):
+    path = tmp_path / "loss.sqlite3"
+    result = DurableSafetyStore(path).evaluate_daily_loss(
+        "session", Decimal("-2.50"), Decimal("0"), Decimal("0"), Decimal("0")
+    )
+    assert result.latched
+    assert result.reason == "DAILY_LOSS_LIMIT_REACHED"
+    assert DurableSafetyStore(path).get_session_risk("session").latched
+
+
+def test_persisted_loss_formula_includes_fees_and_funding(tmp_path):
+    db = store(tmp_path)
+    # 1.00 realized + 1.00 unrealized - 0.50 fees - 4.00 funding = -2.50
+    result = db.evaluate_daily_loss(
+        "session", Decimal("1"), Decimal("1"), Decimal("0.50"), Decimal("-4")
+    )
+    assert result.latched
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        (None, Decimal("0"), Decimal("0"), Decimal("0")),
+        (Decimal("0"), None, Decimal("0"), Decimal("0")),
+        (Decimal("0"), Decimal("0"), None, Decimal("0")),
+        (Decimal("0"), Decimal("0"), Decimal("0"), None),
+        (0.0, Decimal("0"), Decimal("0"), Decimal("0")),
+    ],
+)
+def test_persisted_loss_missing_or_invalid_component_latches(tmp_path, values):
+    result = store(tmp_path).evaluate_daily_loss("session", *values)
+    assert result.latched
+    assert result.reason == "P_AND_L_COMPONENT_MISSING_OR_INVALID"
+
+
+def test_persisted_loss_latch_never_resets_when_pnl_recovers(tmp_path):
+    db = store(tmp_path)
+    assert db.evaluate_daily_loss(
+        "session", Decimal("-2.50"), Decimal("0"), Decimal("0"), Decimal("0")
+    ).latched
+    assert db.evaluate_daily_loss(
+        "session", Decimal("100"), Decimal("0"), Decimal("0"), Decimal("0")
+    ).latched
+
+
+def test_order_intent_status_cannot_move_backwards(tmp_path):
+    db = store(tmp_path)
+    intent = db.register_intent("session", "signal", {"order_role": "entry"})
+    db.update_intent_status(intent.client_order_id, "EXCHANGE_CONFIRMED")
+    with pytest.raises(PersistenceError, match="illegal intent status transition"):
+        db.update_intent_status(intent.client_order_id, "SUBMISSION_UNKNOWN")
+
+
+def test_status_transition_is_transactionally_audited(tmp_path):
+    db = store(tmp_path)
+    intent = db.register_intent("session", "signal", {"order_role": "entry"})
+    db.update_intent_status(intent.client_order_id, "SUBMISSION_UNKNOWN")
+    db.update_intent_status(intent.client_order_id, "EXCHANGE_CONFIRMED")
+    ok, count = db.verify_audit_chain()
+    assert ok and count == 3
