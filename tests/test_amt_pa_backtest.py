@@ -5,7 +5,7 @@ import pytest
 
 from shashi_engine.amt_pa_backtest import (
     BacktestConfig, Signal, _expected_funding_times, _target,
-    compute_session_profile, run_backtest, session_date_for,
+    compute_session_profile, run_backtest, session_date_for, _runner_breakeven_stop,
 )
 from shashi_engine.accounting import AccountingPolicy, FeeSchedule
 from shashi_engine.models import Candle, Instrument
@@ -115,7 +115,7 @@ def test_even_lot_requirement_for_partial():
         BacktestConfig(position_lots=1)
 
 
-def _run_with_injected_signal(monkeypatch, entry_bar, following_bars):
+def _run_with_injected_signal(monkeypatch, entry_bar, following_bars, config=None):
     import shashi_engine.amt_pa_backtest as engine
 
     bars = session_candles(date(2026, 11, 20))[:17]
@@ -136,6 +136,7 @@ def _run_with_injected_signal(monkeypatch, entry_bar, following_bars):
         bars, instrument(),
         FeeSchedule(Decimal(".0002"), Decimal(".0005"), Decimal(".18")),
         AccountingPolicy(timedelta(minutes=10)),
+        config=config or BacktestConfig(),
     )
     assert len(result.trades) == 1
     return result.trades[0], bars
@@ -187,3 +188,40 @@ def test_runner_lots_reports_full_position_without_partial_and_one_after_partial
     assert trade.partial_lots == 1
     assert trade.runner_lots == 1
     assert trade.partial_exit_price == Decimal("60050")
+
+
+
+def test_fee_adjusted_runner_breakeven_covers_entry_and_exit_fees_with_gst():
+    fees = FeeSchedule(Decimal(".0002"), Decimal(".0005"), Decimal(".18"))
+    long_stop = _runner_breakeven_stop(Decimal("60000"), "long", fees, Decimal(".50"))
+    short_stop = _runner_breakeven_stop(Decimal("60000"), "short", fees, Decimal(".50"))
+    effective = fees.taker_rate * (Decimal(1) + fees.gst_rate)
+    assert long_stop >= Decimal("60000") * (Decimal(1) + effective) / (Decimal(1) - effective)
+    assert short_stop <= Decimal("60000") * (Decimal(1) - effective) / (Decimal(1) + effective)
+
+
+def test_runner_breakeven_activates_only_after_partial_confirmation_on_next_candle(monkeypatch):
+    bars = session_candles(date(2026, 11, 20))
+    # The target is touched in this candle, but its low is below the future
+    # fee-adjusted stop while remaining above the original protective stop.
+    target_bar = Candle(
+        "BTCUSD", "30m", bars[14].start_time, Decimal("60000"),
+        Decimal("60100"), Decimal("60000"), Decimal("60080"), Decimal("1"),
+    )
+    next_bar = Candle(
+        "BTCUSD", "30m", bars[15].start_time, Decimal("60000"),
+        Decimal("60070"), Decimal("60030"), Decimal("60040"), Decimal("1"),
+    )
+    trade, _ = _run_with_injected_signal(
+        monkeypatch, target_bar, [next_bar], BacktestConfig(runner_breakeven=True)
+    )
+    fees = FeeSchedule(Decimal(".0002"), Decimal(".0005"), Decimal(".18"))
+    expected_stop = _runner_breakeven_stop(
+        Decimal("60000"), "long", fees, Decimal(".50")
+    )
+    assert trade.partial_exit_time == target_bar.end_time
+    assert trade.partial_exit_price == Decimal("60050")
+    assert trade.final_exit_time == next_bar.start_time
+    assert trade.final_exit_reason == "INITIAL_PROTECTIVE_STOP"
+    assert trade.final_exit_price == expected_stop
+    assert trade.final_exit_price > trade.entry_price
