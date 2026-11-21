@@ -572,6 +572,62 @@ def test_pullback_limit_uses_open_price_if_market_gaps_through_limit(monkeypatch
     assert result.pullback_orders_filled_at_limit == 0
 
 
+
+def test_pullback_tick_through_short_gap_open_is_taker_at_better_open(monkeypatch):
+    import shashi_engine.amt_pa_backtest as engine
+
+    bars = session_candles(date(2026, 11, 20))[:17]
+    fill_bar = Candle(
+        "BTCUSD", "30m", bars[14].start_time, Decimal("60000.50"),
+        Decimal("60050"), Decimal("59980"), Decimal("60010"), Decimal("1"),
+    )
+    bars[14] = fill_bar
+    injected = Signal(
+        13, "A_FAILED_AUCTION", "short", Decimal("60000"),
+        Decimal("60100"), Decimal("59950"), "2026-11-19_POC", Decimal("100"),
+        Decimal("59900"), "2026-11-18_VAL",
+    )
+    monkeypatch.setattr(
+        engine, "_signal_at",
+        lambda candles, index, profiles, market_instrument, config:
+            (injected, False) if index == 13 else (None, False),
+    )
+    result = run_backtest(
+        bars, instrument(),
+        FeeSchedule(Decimal(".0002"), Decimal(".0005"), Decimal(".18")),
+        AccountingPolicy(timedelta(minutes=10)),
+        config=BacktestConfig(
+            pullback_entry=True, pullback_maker_entry=True,
+            pullback_require_tick_through=True,
+        ),
+    )
+    assert len(result.trades) == 1
+    assert result.trades[0].direction == "short"
+    assert result.trades[0].entry_price == Decimal("60000.50")
+    assert result.trades[0].entry_liquidity == "taker"
+    assert result.trades[0].first_target == Decimal("59950")
+    assert result.pullback_orders_gap_through == 1
+    assert result.pullback_orders_filled_at_limit == 0
+
+
+def test_pullback_pre_order_rr_gate_accepts_limit_rr_and_preserves_signal_target_on_gap_fill(monkeypatch):
+    bars = session_candles(date(2026, 11, 20))
+    gap_bar = Candle(
+        "BTCUSD", "30m", bars[14].start_time, Decimal("59999.50"),
+        Decimal("60030"), Decimal("59950"), Decimal("60010"), Decimal("1"),
+    )
+    result = _pullback_test_run(
+        monkeypatch, gap_bar, min_rr=Decimal("0.5"),
+        require_tick_through=True,
+    )
+    assert len(result.trades) == 1
+    assert result.pullback_orders_placed == 1
+    assert result.pullback_orders_filled == result.pullback_orders_accepted == 1
+    assert result.pullback_orders_rejected_low_rr_before_placement == 0
+    assert result.pullback_orders_rejected_low_rr == 0
+    assert result.trades[0].entry_price == Decimal("59999.50")
+    assert result.trades[0].first_target == Decimal("60050")
+
 def test_pullback_limit_bars_must_be_positive():
     with pytest.raises(ValueError, match="pullback_limit_bars"):
         BacktestConfig(pullback_entry=True, pullback_limit_bars=0)
