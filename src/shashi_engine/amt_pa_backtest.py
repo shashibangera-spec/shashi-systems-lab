@@ -619,12 +619,17 @@ def run_backtest(candles: Sequence[Candle], instrument: Instrument, fee_schedule
                     if signal.direction == "long":
                         raw = active["highest_high_since_t1"] - config.runner_trail_atr_multiplier * atr_previous
                         ticks = (raw / instrument.tick_size).to_integral_value(rounding="ROUND_FLOOR")
-                        active["stop"] = max(active["stop"], ticks * instrument.tick_size)
+                        candidate = ticks * instrument.tick_size
+                        if candidate > active["stop"]:
+                            active["stop"] = candidate
+                            active["trail_stop_activated"] = True
                     else:
                         raw = active["lowest_low_since_t1"] + config.runner_trail_atr_multiplier * atr_previous
                         ticks = (raw / instrument.tick_size).to_integral_value(rounding="ROUND_CEILING")
-                        active["stop"] = min(active["stop"], ticks * instrument.tick_size)
-                    active["trail_stop_activated"] = True
+                        candidate = ticks * instrument.tick_size
+                        if candidate < active["stop"]:
+                            active["stop"] = candidate
+                            active["trail_stop_activated"] = True
 
             stop_hit = candle.low <= active["stop"] if signal.direction == "long" else candle.high >= active["stop"]
             if stop_hit:
