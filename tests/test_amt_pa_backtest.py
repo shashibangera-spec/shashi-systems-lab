@@ -596,3 +596,11 @@ def test_pullback_maker_flag_charges_maker_only_for_resting_limit_fill(monkeypat
     assert maker.pullback_orders_filled == maker.pullback_orders_accepted == 1
     assert maker.pullback_orders_filled_at_limit == 1 and maker.pullback_orders_gap_through == 0
     assert maker.pullback_orders_filled == maker.pullback_orders_accepted + maker.pullback_orders_rejected_low_rr + maker.pullback_orders_rejected_no_reference
+
+
+def test_runner_breakeven_uses_maker_entry_fee_and_taker_exit_fee():
+    fees = FeeSchedule(Decimal(".0002"), Decimal(".0005"), Decimal(".18"))
+    maker_stop = _runner_breakeven_stop(Decimal("60000"), "long", fees, Decimal(".50"), "maker")
+    taker_stop = _runner_breakeven_stop(Decimal("60000"), "long", fees, Decimal(".50"), "taker")
+    assert maker_stop < taker_stop
+    assert maker_stop % Decimal(".50") == 0
