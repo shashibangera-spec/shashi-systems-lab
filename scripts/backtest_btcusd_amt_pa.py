@@ -137,6 +137,10 @@ def main() -> int:
         help="after Target 1 partial, close the runner at the next completed prior-session AMT reference; requires --runner-breakeven",
     )
     parser.add_argument(
+        "--runner-trail-atr-multiplier", type=Decimal, default=None, metavar="MULTIPLIER",
+        help="after Target 1, trail the runner by this multiple of completed-candle ATR(14), with fee-adjusted breakeven as floor; requires --runner-breakeven and excludes --runner-next-amt-target",
+    )
+    parser.add_argument(
         "--min-first-target-rr", type=Decimal, default=None, metavar="R",
         help="skip entries whose nearest eligible prior-session AMT first target is below this R:R (e.g. 1.0); default off",
     )
@@ -213,6 +217,7 @@ def main() -> int:
                 runner_breakeven_min_rr=args.runner_breakeven_min_rr,
                 min_first_target_rr=args.min_first_target_rr,
                 runner_next_amt_target=args.runner_next_amt_target,
+                runner_trail_atr_multiplier=args.runner_trail_atr_multiplier,
                 pullback_entry=args.pullback_entry,
                 pullback_limit_bars=args.pullback_limit_bars,
                 pullback_maker_entry=args.pullback_maker_entry,
@@ -266,6 +271,8 @@ def main() -> int:
                 "runner_breakeven_fee_basis": "remaining runner entry taker fee + exit taker fee, both including GST",
                 "runner_next_amt_target_enabled": args.runner_next_amt_target,
                 "runner_next_amt_target_rule": "nearest completed prior-session VAH/POC/VAL strictly beyond first_target; stop-first; evaluated from candle after partial confirmation; no second reference retains fee-adjusted breakeven fallback",
+                "runner_trail_atr_multiplier": (str(args.runner_trail_atr_multiplier) if args.runner_trail_atr_multiplier is not None else None),
+                "runner_trail_rule": ("after Target 1 confirmation, use highest high since T1 minus multiplier times previous completed candle ATR(14) for longs, or lowest low since T1 plus multiplier times previous completed candle ATR(14) for shorts; fee-adjusted breakeven remains absolute floor; stops ratchet only in protective direction; conservative $0.50 tick rounding; gap-through opens fill at open; no fixed Target 2" if args.runner_trail_atr_multiplier is not None else None),
                 "minimum_first_target_rr": (
                     str(args.min_first_target_rr) if args.min_first_target_rr is not None else None
                 ),
