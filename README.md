@@ -47,7 +47,7 @@ This is a **read-only snapshot utility**, not an execution bot. The client expos
 
 ### Windows setup
 
-1. Create a separate **Delta Exchange India Demo/Testnet** API key. Start with the narrowest **Read Data** permission available and an IP allowlist if Delta offers it. Do not use a production key. Delta's documentation has inconsistent permission notes for account endpoints; if a GET reports an authorization/permission error, stop and do not grant Trading permission without a separate security review and explicit approval.
+1. Create a separate **Delta Exchange India Demo/Testnet** API key. Use a separate **Demo/Testnet-only** key and an IP allowlist if Delta offers it. Do not use a production key. Important: Delta's REST API reference explicitly says Orders, Positions and Wallet endpoints require **Trading** permission, even for GET requests. That means the key may have exchange trading capability if it is compromised, although this repository's client exposes only fixed GET operations and contains no order mutation methods. Use this key only if you accept that credential-level risk; never use it outside the local Demo/Testnet account. Do not grant this permission to any production key.
 2. In PowerShell, from the repository folder:
 
 ```powershell
