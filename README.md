@@ -21,7 +21,8 @@ A standalone research and engineering workspace for a modular market-data and si
 - No withdrawal permissions.
 - No connection to the existing BTC dashboard or its production database.
 - No strategy signals connected to execution.
-- Demo execution is not authorized and requires a separate future approval.
+- No live trading, production credentials, private account access or production integrations.
+- Strategy research and Delta Exchange Testnet demo execution are conditional future milestones after Phase 1H acceptance and separate scoped reviews; no live execution is authorized.
 
 ## Public repository warning
 
