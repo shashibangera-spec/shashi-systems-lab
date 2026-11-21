@@ -42,6 +42,7 @@ class BacktestConfig:
     rejection_close_fraction: Decimal = Decimal("0.60")
     position_lots: int = 2
     stop_pad_ticks: int = 1
+    runner_breakeven: bool = False
 
     def __post_init__(self) -> None:
         if not self.row_size.is_finite() or self.row_size <= 0:
@@ -264,6 +265,21 @@ def _signal_at(candles: Sequence[Candle], index: int, profiles: dict[date, Sessi
     return Signal(index, setup, direction, level, stop, target[0], target[1], atr), False
 
 
+def _runner_breakeven_stop(entry_price: Decimal, direction: Direction,
+                           fee_schedule: FeeSchedule, tick_size: Decimal) -> Decimal:
+    """Return a tick-rounded stop that covers runner entry and taker exit fees plus GST."""
+    effective_rate = fee_schedule.taker_rate * (Decimal(1) + fee_schedule.gst_rate)
+    if not Decimal(0) <= effective_rate < Decimal(1):
+        raise ValueError("effective taker fee including GST must be in [0, 1)")
+    if direction == "long":
+        raw = entry_price * (Decimal(1) + effective_rate) / (Decimal(1) - effective_rate)
+        ticks = (raw / tick_size).to_integral_value(rounding="ROUND_CEILING")
+    else:
+        raw = entry_price * (Decimal(1) - effective_rate) / (Decimal(1) + effective_rate)
+        ticks = (raw / tick_size).to_integral_value(rounding="ROUND_FLOOR")
+    return ticks * tick_size
+
+
 def _expected_funding_times(start: datetime, end: datetime) -> tuple[datetime, ...]:
     if end <= start:
         return ()
@@ -373,6 +389,16 @@ def run_backtest(candles: Sequence[Candle], instrument: Instrument, fee_schedule
                 active = None
                 continue
 
+            # A partial is confirmed only at the completed candle boundary. Activate
+            # the fee-adjusted runner stop from the following candle, never retroactively.
+            if (config.runner_breakeven and active["partial_time"] is not None
+                and not active["breakeven_activated"]
+                and candle.start_time >= active["partial_time"]):
+                active["stop"] = _runner_breakeven_stop(
+                    active["entry_price"], signal.direction, fee_schedule, instrument.tick_size
+                )
+                active["breakeven_activated"] = True
+
             stop_hit = candle.low <= active["stop"] if signal.direction == "long" else candle.high >= active["stop"]
             if stop_hit:
                 trades.append(_close_trade(
@@ -423,6 +449,7 @@ def run_backtest(candles: Sequence[Candle], instrument: Instrument, fee_schedule
                 "entry_time": entry_candle.start_time, "entry_price": entry_price,
                 "stop": signal.stop_price, "target": signal.target_price,
                 "partial_time": None, "partial_price": None, "pending_exit": None,
+                "breakeven_activated": False,
             }
             next_trade_id += 1
 
