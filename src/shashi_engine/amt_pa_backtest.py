@@ -634,7 +634,10 @@ def run_backtest(candles: Sequence[Candle], instrument: Instrument, fee_schedule
             stop_hit = candle.low <= active["stop"] if signal.direction == "long" else candle.high >= active["stop"]
             if stop_hit:
                 gap_through = candle.open <= active["stop"] if signal.direction == "long" else candle.open >= active["stop"]
-                stop_fill = candle.open if gap_through else active["stop"]
+                stop_fill = (
+                    candle.open if gap_through and active["trail_stop_activated"]
+                    else active["stop"]
+                )
                 stop_reason = ("RUNNER_ATR_TRAILING_STOP" if active["trail_stop_activated"]
                                else "RUNNER_FEE_ADJUSTED_BREAKEVEN" if active["breakeven_activated"]
                                else "INITIAL_PROTECTIVE_STOP")
