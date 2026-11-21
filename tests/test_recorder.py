@@ -122,12 +122,27 @@ def test_recovery_rejects_out_of_order_rest_candles_before_writing(tmp_path):
     assert not (tmp_path / "btc.jsonl").exists()
 
 
-def test_recovery_rejects_candle_outside_requested_gap(tmp_path):
+def test_recovery_ignores_adjacent_rest_boundary_candles(tmp_path):
+    recorder = AppendOnlyJsonlRecorder(tmp_path / "btc.jsonl")
+    result = recover_missing_candles(
+        recorder, start_epoch=epoch(T0), end_epoch=epoch(T0 + timedelta(minutes=60)),
+        fetcher=lambda *_: [candle(-30), candle(0), candle(30), candle(60)],
+        max_intervals=2,
+    )
+    assert result["recovered"] == [T0.isoformat(), (T0 + timedelta(minutes=30)).isoformat()]
+    assert result["unresolved"] == []
+    rows = [json.loads(line) for line in (tmp_path / "btc.jsonl").read_text().splitlines()]
+    assert [row["candle_start_utc"] for row in rows if row["record_type"] == "rest_recovery"] == [
+        T0.isoformat(), (T0 + timedelta(minutes=30)).isoformat()
+    ]
+
+
+def test_recovery_still_rejects_non_boundary_out_of_range_candle(tmp_path):
     recorder = AppendOnlyJsonlRecorder(tmp_path / "btc.jsonl")
     with pytest.raises(RecorderError, match="outside"):
         recover_missing_candles(
             recorder, start_epoch=epoch(T0), end_epoch=epoch(T0 + timedelta(minutes=30)),
-            fetcher=lambda *_: [candle(30)], max_intervals=1,
+            fetcher=lambda *_: [candle(60)], max_intervals=1,
         )
 
 

@@ -133,6 +133,24 @@ def test_rest_gap_validation_is_read_only_and_reports_missing(tmp_path):
     assert path.read_bytes() == before
 
 
+def test_rest_gap_validation_ignores_adjacent_boundary_candles():
+    result = validate_rest_gap(
+        int(T0.timestamp()), int((T0 + timedelta(minutes=60)).timestamp()),
+        fetcher=lambda *_: [candle(-30), candle(0), candle(30), candle(60)],
+    )
+    assert result["valid"]
+    assert result["returned"] == [T0.isoformat(), (T0 + timedelta(minutes=30)).isoformat()]
+    assert result["unresolved"] == []
+
+
+def test_rest_gap_validation_still_rejects_non_boundary_out_of_range_candle():
+    with pytest.raises(RecorderError, match="outside"):
+        validate_rest_gap(
+            int(T0.timestamp()), int((T0 + timedelta(minutes=60)).timestamp()),
+            fetcher=lambda *_: [candle(90)],
+        )
+
+
 def test_rest_gap_validation_rejects_duplicate_before_any_write():
     with pytest.raises(RecorderError, match="duplicate"):
         validate_rest_gap(

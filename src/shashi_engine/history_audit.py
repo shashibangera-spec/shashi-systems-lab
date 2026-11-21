@@ -206,14 +206,20 @@ def validate_rest_gap(
         raise ValueError("gap exceeds configured maximum interval count")
     if not expected:
         return {"requested_intervals": 0, "returned": [], "unresolved": [], "valid": True}
-    candles = list(fetcher(start_epoch, end_epoch, "30m"))
+    returned_candles = list(fetcher(start_epoch, end_epoch, "30m"))
     seen: set[int] = set()
     previous: int | None = None
-    for candle in candles:
-        if candle.symbol != EXPECTED_SYMBOL or candle.resolution != EXPECTED_RESOLUTION:
+    candles: list[Candle] = []
+    expected_set = set(expected)
+    for candle in returned_candles:
+        if not isinstance(candle, Candle) or candle.symbol != EXPECTED_SYMBOL or candle.resolution != EXPECTED_RESOLUTION:
             raise RecorderError("REST gap check returned unsupported symbol or resolution")
         stamp = int(candle.start_time.timestamp())
-        if stamp not in expected:
+        if stamp not in expected_set:
+            # Ignore only adjacent candles whose intervals touch the requested
+            # half-open gap; unrelated out-of-range data remains an error.
+            if stamp in (start_epoch - INTERVAL_SECONDS, end_epoch):
+                continue
             raise RecorderError("REST gap check returned candle outside requested gap")
         if stamp in seen:
             raise RecorderError("REST gap check returned duplicate timestamps")
@@ -221,6 +227,7 @@ def validate_rest_gap(
             raise RecorderError("REST gap check returned out-of-order candles")
         seen.add(stamp)
         previous = stamp
+        candles.append(candle)
     unresolved = [
         datetime.fromtimestamp(stamp, timezone.utc).isoformat()
         for stamp in expected if stamp not in seen
