@@ -115,7 +115,10 @@ def test_even_lot_requirement_for_partial():
         BacktestConfig(position_lots=1)
 
 
-def _run_with_injected_signal(monkeypatch, entry_bar, following_bars, config=None):
+def _run_with_injected_signal(
+    monkeypatch, entry_bar, following_bars, config=None,
+    target_price=Decimal("60050"), stop_price=Decimal("59999"),
+):
     import shashi_engine.amt_pa_backtest as engine
 
     bars = session_candles(date(2026, 11, 20))[:17]
@@ -125,7 +128,7 @@ def _run_with_injected_signal(monkeypatch, entry_bar, following_bars, config=Non
     signal_index = 13
     injected = Signal(
         signal_index, "A_FAILED_AUCTION", "long", Decimal("59000"),
-        Decimal("59999"), Decimal("60050"), "2026-11-19_POC", Decimal("100"),
+        stop_price, target_price, "2026-11-19_POC", Decimal("100"),
     )
 
     def fake_signal_at(candles, index, profiles, market_instrument, config):
@@ -225,3 +228,61 @@ def test_runner_breakeven_activates_only_after_partial_confirmation_on_next_cand
     assert trade.final_exit_reason == "RUNNER_FEE_ADJUSTED_BREAKEVEN"
     assert trade.final_exit_price == expected_stop
     assert trade.final_exit_price > trade.entry_price
+
+
+
+def test_runner_breakeven_rr_gate_activates_at_exactly_one_r(monkeypatch):
+    bars = session_candles(date(2026, 11, 20))
+    target_bar = Candle(
+        "BTCUSD", "30m", bars[14].start_time, Decimal("60000"),
+        Decimal("60100"), Decimal("60000"), Decimal("60080"), Decimal("1"),
+    )
+    next_bar = Candle(
+        "BTCUSD", "30m", bars[15].start_time, Decimal("60000"),
+        Decimal("60070"), Decimal("60000"), Decimal("60040"), Decimal("1"),
+    )
+    trade, _ = _run_with_injected_signal(
+        monkeypatch, target_bar, [next_bar],
+        BacktestConfig(runner_breakeven=True, runner_breakeven_min_rr=Decimal("1.0")),
+        target_price=Decimal("60001"), stop_price=Decimal("59999"),
+    )
+    assert abs(Decimal("60001") - Decimal("60000")) / abs(Decimal("60000") - Decimal("59999")) == Decimal("1")
+    assert trade.final_exit_reason == "RUNNER_FEE_ADJUSTED_BREAKEVEN"
+
+
+def test_runner_breakeven_rr_gate_does_not_activate_below_one_r(monkeypatch):
+    bars = session_candles(date(2026, 11, 20))
+    target_bar = Candle(
+        "BTCUSD", "30m", bars[14].start_time, Decimal("60000"),
+        Decimal("60100"), Decimal("60000"), Decimal("60080"), Decimal("1"),
+    )
+    next_bar = Candle(
+        "BTCUSD", "30m", bars[15].start_time, Decimal("60000"),
+        Decimal("60070"), Decimal("60000"), Decimal("59950"), Decimal("1"),
+    )
+    trade, _ = _run_with_injected_signal(
+        monkeypatch, target_bar, [next_bar],
+        BacktestConfig(runner_breakeven=True, runner_breakeven_min_rr=Decimal("1.0")),
+        target_price=Decimal("60000.99"), stop_price=Decimal("59999"),
+    )
+    assert abs(Decimal("60000.99") - Decimal("60000")) / abs(Decimal("60000") - Decimal("59999")) < Decimal("1")
+    assert trade.final_exit_reason == "INITIAL_PROTECTIVE_STOP"
+    assert trade.final_exit_price == Decimal("59999")
+
+
+def test_runner_breakeven_without_rr_gate_remains_always_on_after_partial(monkeypatch):
+    bars = session_candles(date(2026, 11, 20))
+    target_bar = Candle(
+        "BTCUSD", "30m", bars[14].start_time, Decimal("60000"),
+        Decimal("60100"), Decimal("60000"), Decimal("60080"), Decimal("1"),
+    )
+    next_bar = Candle(
+        "BTCUSD", "30m", bars[15].start_time, Decimal("60000"),
+        Decimal("60070"), Decimal("60000"), Decimal("60040"), Decimal("1"),
+    )
+    trade, _ = _run_with_injected_signal(
+        monkeypatch, target_bar, [next_bar],
+        BacktestConfig(runner_breakeven=True, runner_breakeven_min_rr=None),
+        target_price=Decimal("60000.99"), stop_price=Decimal("59999"),
+    )
+    assert trade.final_exit_reason == "RUNNER_FEE_ADJUSTED_BREAKEVEN"
