@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Phase 1I: add a diagnostic-only MAE/MFE script for the frozen 90-day BTCUSD window; re-fetch and validate all 4,320 public 30m candles, replay the unchanged rules, verify all 28 trades against the reference report, and report signal-ATR-normalized in-trade excursions, stop-candle breach size, and post-stop original-target recovery. No strategy rules or source reports are modified.
 - Phase 1I: add opt-in `--min-first-target-rr` entry eligibility filter (default off); record each rejected low-R:R setup with entry, stop, nearest AMT target, source and computed R:R in the JSON report and console output.
 - Phase 1I: add an optional minimum first-target R:R gate for fee-adjusted runner breakeven activation; the gate is activation-only, defaults to no gate for the always-breakeven comparator, and leaves entries, initial stops, targets and sizing unchanged.
 - Phase 1I: add opt-in fee-adjusted runner breakeven after a completed-candle 50% target confirmation; activation begins on the following candle and includes runner entry/exit taker fees plus GST.
@@ -20,14 +21,14 @@
 - Verify append-only byte-prefix integrity and run Phase 1G history/restart audits after each session; save run-level JSON/Markdown reports locally.
 - Add synthetic tests for soak duration allocation and prefix hashing; no credentials, private account access or order execution.
 
-- Phase 1G: add read-only JSONL history audit, optional public REST gap validation, restart/append integrity checks and JSON/Markdown data-quality reports.
+- Phase 1G: add read-only JSONL history audit, optional public REST gap validation, restart/append integrity checks and data-quality reports.
 - Add synthetic tests for malformed history, provenance, gaps, recovery reports, restart deduplication and append continuity.
 - Keep Phase 1G non-executing; the audit never rewrites source history or automatically fills gaps.
 
 - Phase 1F: add a local append-only JSONL recorder for public BTCUSD 30m WebSocket updates and completed candles.
 - Add CONNECTED/STALE/DISCONNECTED feed-health monitoring and bounded REST recovery for missing completed intervals.
 - Add synthetic tests for append-only behavior, duplicate protection, recovery gaps and feed-health transitions.
-- Keep local recordings git-ignored; no private account access, database integration, order execution or changes to the existing BTC dashboard.
+- Keep Phase 1F local and non-executing; no credentials, private account access, database integration, order execution or changes to the existing BTC dashboard.
 
 ## 2026-11-21
 - Phase 1F local public-data recorder and REST recovery merged after CI and user-run Windows/live recording validation.
