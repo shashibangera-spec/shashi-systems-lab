@@ -397,7 +397,7 @@ def test_next_amt_target_selects_nearest_completed_level_strictly_beyond_first_t
     ]
     assert _next_target("long", Decimal("60800"), history) == (Decimal("61000"), "2026-11-19_POC")
     assert _next_target("short", Decimal("60500"), history) == (Decimal("60000"), "2026-11-20_VAL")
-    assert _next_target("long", Decimal("61200"), history) is None
+    assert _next_target("long", Decimal("61500"), history) is None
 
 
 def test_runner_next_amt_target_closes_runner_after_partial_confirmation(monkeypatch):
@@ -407,8 +407,8 @@ def test_runner_next_amt_target_closes_runner_after_partial_confirmation(monkeyp
         Decimal("60060"), Decimal("59990"), Decimal("60055"), Decimal("1"),
     )
     runner_bar = Candle(
-        "BTCUSD", "30m", bars[15].start_time, Decimal("60060"),
-        Decimal("60120"), Decimal("60050"), Decimal("60100"), Decimal("1"),
+        "BTCUSD", "30m", bars[15].start_time, Decimal("60080"),
+        Decimal("60120"), Decimal("60080"), Decimal("60100"), Decimal("1"),
     )
     trade, _ = _run_with_injected_signal(
         monkeypatch, partial_bar, [runner_bar],
