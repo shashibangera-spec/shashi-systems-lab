@@ -131,3 +131,14 @@ py -3 scripts\\backtest_btcusd_amt_pa.py --fetch-days 40 --output data\\reports\
 \`\`\`
 
 Historical candle data is public and unauthenticated. Funding is not included by this fetch; unless a complete, separately verified funding CSV is supplied, net including funding remains unavailable for trades with expected funding events.
+
+
+## Optional post-Target-1 ATR runner trailing stop
+
+- CLI: `--runner-trail-atr-multiplier MULTIPLIER` (optional; the approved comparison uses `2.0`). Requires `--runner-breakeven`; mutually exclusive with `--runner-next-amt-target`.
+- The runner's fee-adjusted breakeven stop remains the absolute protection floor. After a completed candle confirms Target 1, seed the high/low watermark from that completed Target 1 candle. The trail first becomes eligible on the following candle.
+- Long candidate: highest high since Target 1 minus multiplier × ATR(14). Round down to the instrument tick and ratchet the stop upward only: max(existing stop, candidate).
+- Short candidate: lowest low since Target 1 plus multiplier × ATR(14). Round up to the instrument tick and ratchet the stop downward only: min(existing stop, candidate).
+- Each candidate uses the ATR and watermark known at the preceding completed candle close; a newly completed candle can update the watermark only for the next candle. No same-candle lookahead.
+- If the next candle opens through the active stop, simulate the exit at its open; otherwise use the stop price. All runner exits remain taker.
+- With this mode active there is no fixed Target 2 / next-AMT cap. Existing entry, Target 1 partial, initial stop, eligibility filters, structural invalidation and accounting remain unchanged.
