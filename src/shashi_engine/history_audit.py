@@ -88,9 +88,10 @@ def audit_jsonl_history(path: str | Path) -> HistoryAudit:
     malformed: list[str] = []
     structural: list[str] = []
     recovery_issues: list[str] = []
-    records: list[dict[str, Any]] = []
-    candles: list[tuple[int, Candle, str]] = []
-    recovery_reports: list[dict[str, Any]] = []
+    total_records = 0
+    candles: list[tuple[datetime, str]] = []
+    unresolved_starts: set[datetime] = set()
+    recovery_report_index = 0
     with target.open("rb") as handle:
         for line_number, raw_line in enumerate(handle, start=1):
             digest.update(raw_line)
@@ -114,7 +115,7 @@ def audit_jsonl_history(path: str | Path) -> HistoryAudit:
             if not isinstance(record, dict) or not isinstance(record.get("record_type"), str):
                 structural.append(f"line {line_number}: record must be an object with record_type")
                 continue
-            records.append(record)
+            total_records += 1
             if "recorded_at_utc" in record:
                 try:
                     _parse_utc(record["recorded_at_utc"], "recorded_at_utc")
@@ -123,14 +124,29 @@ def audit_jsonl_history(path: str | Path) -> HistoryAudit:
             if record["record_type"] in CANONICAL_TYPES:
                 try:
                     candle = _canonical_candle(record, line_number)
-                    candles.append((line_number, candle, record["record_type"]))
+                    candles.append((candle.start_time, record["record_type"]))
                 except ValueError as exc:
                     structural.append(str(exc))
             elif record["record_type"] == "recovery_report":
-                recovery_reports.append(record)
+                recovery_report_index += 1
+                try:
+                    requested = int(record["requested_intervals"])
+                    recovered = int(record["recovered_count"])
+                    unresolved = record["unresolved"]
+                    if not isinstance(unresolved, list) or requested < 0 or recovered < 0:
+                        raise ValueError("invalid recovery counts or unresolved list")
+                    if recovered + len(unresolved) > requested:
+                        raise ValueError("recovered plus unresolved exceeds requested interval count")
+                    for stamp in unresolved:
+                        parsed = _parse_utc(stamp, "unresolved timestamp")
+                        if parsed.minute not in (0, 30) or parsed.second or parsed.microsecond:
+                            raise ValueError("unresolved timestamp is not UTC half-hour aligned")
+                        unresolved_starts.add(parsed)
+                except (KeyError, TypeError, ValueError) as exc:
+                    recovery_issues.append(f"recovery report {recovery_report_index}: {exc}")
     sha256_before = digest.hexdigest()
 
-    starts = [item[1].start_time for item in candles]
+    starts = [item[0] for item in candles]
     seen: set[datetime] = set()
     duplicates: list[str] = []
     for stamp in starts:
@@ -153,29 +169,10 @@ def audit_jsonl_history(path: str | Path) -> HistoryAudit:
         else:
             missing += max(0, elapsed // INTERVAL_SECONDS - 1)
 
-    unresolved_starts: set[datetime] = set()
-    for index, report in enumerate(recovery_reports, start=1):
-        try:
-            requested = int(report["requested_intervals"])
-            recovered = int(report["recovered_count"])
-            unresolved = report["unresolved"]
-            if not isinstance(unresolved, list) or requested < 0 or recovered < 0:
-                raise ValueError("invalid recovery counts or unresolved list")
-            # Some returned candles may already exist and be skipped by append-only dedup.
-            if recovered + len(unresolved) > requested:
-                raise ValueError("recovered plus unresolved exceeds requested interval count")
-            for stamp in unresolved:
-                parsed = _parse_utc(stamp, "unresolved timestamp")
-                if parsed.minute not in (0, 30) or parsed.second or parsed.microsecond:
-                    raise ValueError("unresolved timestamp is not UTC half-hour aligned")
-                unresolved_starts.add(parsed)
-        except (KeyError, TypeError, ValueError) as exc:
-            recovery_issues.append(f"recovery report {index}: {exc}")
-
     # Historical unresolved reports cease to be outstanding once a later append fills that start.
     unresolved_count = len(unresolved_starts - seen)
-    ws_count = sum(kind == "completed_candle" for _, _, kind in candles)
-    rest_count = sum(kind == "rest_recovery" for _, _, kind in candles)
+    ws_count = sum(kind == "completed_candle" for _, kind in candles)
+    rest_count = sum(kind == "rest_recovery" for _, kind in candles)
     first = unique_sorted[0].isoformat() if unique_sorted else None
     last = unique_sorted[-1].isoformat() if unique_sorted else None
     acceptable = bool(candles) and not any((
@@ -183,7 +180,7 @@ def audit_jsonl_history(path: str | Path) -> HistoryAudit:
     ))
     return HistoryAudit(
         path=str(target), file_bytes=file_bytes, sha256_before=sha256_before,
-        total_records=len(records), canonical_candles=len(candles),
+        total_records=total_records, canonical_candles=len(candles),
         websocket_candles=ws_count, rest_recovery_candles=rest_count,
         duplicate_starts=tuple(duplicates), out_of_order_pairs=tuple(out_of_order),
         missing_intervals=missing, unresolved_recovery_intervals=unresolved_count,
