@@ -238,7 +238,10 @@ def main() -> int:
                     else "signal_ATR_multiplier_beyond_signal_candle_extreme"
                 ),
                 "partial_close_fraction": "0.50",
-                "entry_and_exit_liquidity": "taker", "pullback_maker_entry_enabled": args.pullback_maker_entry,
+                "entry_and_exit_liquidity": ("mixed" if args.pullback_maker_entry else "taker"),
+                "exit_liquidity": "taker", "non_pullback_entry_liquidity": "taker",
+                "pullback_resting_limit_entry_liquidity": ("maker" if args.pullback_maker_entry else "taker"),
+                "pullback_maker_entry_enabled": args.pullback_maker_entry,
                 "pullback_entry_fee_rule": ("resting limit fills=maker; gap-through opening fills=taker; Setup B next-open=taker" if args.pullback_maker_entry else "all entries taker"),
                 "maker_fee": "0.0002",
                 "taker_fee": "0.0005", "gst_on_fee": "0.18",
