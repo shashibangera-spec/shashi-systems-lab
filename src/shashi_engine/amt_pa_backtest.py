@@ -77,6 +77,7 @@ class TradeResult:
     trade_id: int
     setup: Setup
     direction: Direction
+    signal_candle_start_time: datetime
     signal_time: datetime
     entry_time: datetime
     entry_price: Decimal
@@ -281,8 +282,8 @@ def _funding_for(source: Sequence[FundingEvent], start: datetime, end: datetime,
                  for event in source if start < event.event_at <= end)
 
 
-def _close_trade(trade_id: int, signal: Signal, signal_time: datetime,
-                 entry_time: datetime, entry_price: Decimal,
+def _close_trade(trade_id: int, signal: Signal, signal_candle_start_time: datetime,
+                 signal_time: datetime, entry_time: datetime, entry_price: Decimal,
                  partial_time: datetime | None, partial_price: Decimal | None,
                  final_time: datetime, final_price: Decimal, reason: str,
                  config: BacktestConfig, instrument: Instrument, fee_schedule: FeeSchedule,
@@ -314,10 +315,11 @@ def _close_trade(trade_id: int, signal: Signal, signal_time: datetime,
         all_complete = all_complete and breakdown.net_scenario_result_usd is not None
     complete = not missing and all_complete
     return TradeResult(
-        trade_id, signal.setup, signal.direction, signal_time, entry_time, entry_price,
+        trade_id, signal.setup, signal.direction, signal_candle_start_time, signal_time, entry_time, entry_price,
         signal.thesis_level, signal.stop_price, signal.target_price, signal.target_source,
         partial_time, partial_price, final_time, final_price, reason,
-        config.position_lots, tranche if partial_time else 0, tranche,
+        config.position_lots, tranche if partial_time else 0,
+        config.position_lots - (tranche if partial_time else 0),
         gross, fees, funding_cash, gross - fees,
         gross - fees + funding_cash if complete else None,
         complete, tuple(sorted(missing)),
@@ -362,8 +364,8 @@ def run_backtest(candles: Sequence[Candle], instrument: Instrument, fee_schedule
             assert isinstance(signal, Signal)
             if active["pending_exit"]:
                 trades.append(_close_trade(
-                    int(active["trade_id"]), signal, ordered[signal.index].end_time,
-                    active["entry_time"], active["entry_price"], active["partial_time"],
+                    int(active["trade_id"]), signal, ordered[signal.index].start_time,
+                    ordered[signal.index].end_time, active["entry_time"], active["entry_price"], active["partial_time"],
                     active["partial_price"], candle.start_time, candle.open,
                     str(active["pending_exit"]), config, instrument, fee_schedule,
                     accounting_policy, funding_events, metadata_source,
@@ -374,8 +376,8 @@ def run_backtest(candles: Sequence[Candle], instrument: Instrument, fee_schedule
             stop_hit = candle.low <= active["stop"] if signal.direction == "long" else candle.high >= active["stop"]
             if stop_hit:
                 trades.append(_close_trade(
-                    int(active["trade_id"]), signal, ordered[signal.index].end_time,
-                    active["entry_time"], active["entry_price"], active["partial_time"],
+                    int(active["trade_id"]), signal, ordered[signal.index].start_time,
+                    ordered[signal.index].end_time, active["entry_time"], active["entry_price"], active["partial_time"],
                     active["partial_price"], candle.start_time, active["stop"],
                     "INITIAL_PROTECTIVE_STOP", config, instrument, fee_schedule,
                     accounting_policy, funding_events, metadata_source,
@@ -429,8 +431,8 @@ def run_backtest(candles: Sequence[Candle], instrument: Instrument, fee_schedule
         assert isinstance(signal, Signal)
         last = ordered[-1]
         trades.append(_close_trade(
-            int(active["trade_id"]), signal, ordered[signal.index].end_time,
-            active["entry_time"], active["entry_price"], active["partial_time"],
+            int(active["trade_id"]), signal, ordered[signal.index].start_time,
+            ordered[signal.index].end_time, active["entry_time"], active["entry_price"], active["partial_time"],
             active["partial_price"], last.end_time, last.close, "END_OF_DATA",
             config, instrument, fee_schedule, accounting_policy, funding_events, metadata_source,
         ))
