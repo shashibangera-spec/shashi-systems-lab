@@ -40,3 +40,34 @@ See [Phase 1 design](docs/PHASE1_DESIGN.md) for the reconciled milestone roadmap
 - **Phase 1J — PLANNED, CONDITIONAL:** isolated Delta Exchange Testnet demo execution after Phase 1H and strategy gates; never live trading.
 
 The repository uses public market data only and does not place orders or connect to the existing BTC dashboard or its production database.
+
+## Phase 1J — local India Testnet read-only check
+
+This is a **read-only snapshot utility**, not an execution bot. The client exposes only fixed GET calls for product 27 metadata, positions, open orders, fills and wallet balances. It has no order, cancel, amend, POST, PUT or DELETE operation. It is hard-wired to `https://cdn-ind.testnet.deltaex.org`; production India and Global Testnet hosts are excluded. Redirects and environment-configured HTTP proxies are disabled.
+
+### Windows setup
+
+1. Create a separate **Delta Exchange India Demo/Testnet** API key. Start with the narrowest **Read Data** permission available and an IP allowlist if Delta offers it. Do not use a production key. Delta's documentation has inconsistent permission notes for account endpoints; if a GET reports an authorization/permission error, stop and do not grant Trading permission without a separate security review and explicit approval.
+2. In PowerShell, from the repository folder:
+
+```powershell
+py -3.11 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+py -m pip install --upgrade pip
+py -m pip install -e ".[dev]"
+Copy-Item .env.example .env
+notepad .env
+```
+
+3. In the local `.env` file, replace the two placeholder values with the Demo/Testnet key and secret. Save it. The `.env` file is git-ignored. Never paste credentials into ChatGPT, GitHub, screenshots, or logs.
+4. Run the read-only check:
+
+```powershell
+py scripts\phase1j_testnet_readonly_check.py
+```
+
+5. Expected success output includes `"environment": "DELTA_INDIA_TESTNET"`, product `27 / BTCUSD`, and `"execution_authorized": false`. A nonzero position or any open order is a finding to investigate, not permission to trade. Keep the full report local because it contains private account information.
+
+If the script reports missing credentials, verify the two variable names exactly. If it reports HTTP 401/403 or an API permission error, check the Demo key, timestamp/Windows clock and IP allowlist; **do not switch to production or enable Trading permission as a workaround**. If it reports network or signature errors, stop and share only the sanitized error text.
+
+This snapshot is not yet a complete ledger reconciliation: API pagination, fee/funding history completeness, account-key permission behavior and Windows execution still need verification. No orders are submitted, changed or cancelled. A successful read-only check does not authorize any Testnet order.
