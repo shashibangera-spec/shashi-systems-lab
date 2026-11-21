@@ -72,32 +72,43 @@ def json_value(value: Any) -> Any:
 
 
 def summary_for(trades: list[dict[str, Any]]) -> dict[str, Any]:
-    gross = sum((Decimal(t["gross_pnl_usd"]) for t in trades), Decimal(0))
-    fees = sum((Decimal(t["fees_and_gst_usd"]) for t in trades), Decimal(0))
-    net_ex = sum((Decimal(t["net_ex_funding_usd"]) for t in trades), Decimal(0))
-    funding_complete = all(bool(t["funding_complete"]) for t in trades)
-    net_funding = (
-        sum((Decimal(t["net_including_funding_usd"]) for t in trades), Decimal(0))
-        if trades and funding_complete else None
-    )
-    wins = [Decimal(t["net_ex_funding_usd"]) for t in trades if Decimal(t["net_ex_funding_usd"]) > 0]
-    losses = [Decimal(t["net_ex_funding_usd"]) for t in trades if Decimal(t["net_ex_funding_usd"]) < 0]
-    profit_factor = sum(wins, Decimal(0)) / abs(sum(losses, Decimal(0))) if losses else None
-    equity = peak = drawdown = Decimal(0)
-    for trade in trades:
-        equity += Decimal(trade["net_ex_funding_usd"])
-        peak = max(peak, equity)
-        drawdown = max(drawdown, peak - equity)
-    return {
-        "trade_count": len(trades), "gross_pnl_usd": str(gross),
-        "fees_and_gst_usd": str(fees), "net_ex_funding_usd": str(net_ex),
-        "net_including_funding_usd": str(net_funding) if net_funding is not None else None,
-        "funding_complete_for_all_trades": funding_complete,
-        "win_rate_ex_funding": (str(Decimal(len(wins)) / Decimal(len(trades))) if trades else None),
-        "profit_factor_ex_funding": str(profit_factor) if profit_factor is not None else None,
-        "max_drawdown_ex_funding_usd": str(drawdown),
-    }
+    """Summarize all closed trades and distinguish strategy exits from EOD marks."""
+    def summarize(group: list[dict[str, Any]]) -> dict[str, Any]:
+        gross = sum((Decimal(t["gross_pnl_usd"]) for t in group), Decimal(0))
+        fees = sum((Decimal(t["fees_and_gst_usd"]) for t in group), Decimal(0))
+        net_ex = sum((Decimal(t["net_ex_funding_usd"]) for t in group), Decimal(0))
+        funding_complete = bool(group) and all(bool(t["funding_complete"]) for t in group)
+        net_funding = (
+            sum((Decimal(t["net_including_funding_usd"]) for t in group), Decimal(0))
+            if group and funding_complete else None
+        )
+        wins = [Decimal(t["net_ex_funding_usd"]) for t in group if Decimal(t["net_ex_funding_usd"]) > 0]
+        losses = [Decimal(t["net_ex_funding_usd"]) for t in group if Decimal(t["net_ex_funding_usd"]) < 0]
+        profit_factor = sum(wins, Decimal(0)) / abs(sum(losses, Decimal(0))) if losses else None
+        equity = peak = drawdown = Decimal(0)
+        for trade in group:
+            equity += Decimal(trade["net_ex_funding_usd"])
+            peak = max(peak, equity)
+            drawdown = max(drawdown, peak - equity)
+        return {
+            "trade_count": len(group), "gross_pnl_usd": str(gross),
+            "fees_and_gst_usd": str(fees), "net_ex_funding_usd": str(net_ex),
+            "net_including_funding_usd": str(net_funding) if net_funding is not None else None,
+            "funding_complete_for_all_trades": funding_complete,
+            "win_rate_ex_funding": (str(Decimal(len(wins)) / Decimal(len(group))) if group else None),
+            "profit_factor_ex_funding": str(profit_factor) if profit_factor is not None else None,
+            "max_drawdown_ex_funding_usd": str(drawdown),
+        }
 
+    strategy_exits = [t for t in trades if t["final_exit_reason"] != "END_OF_DATA"]
+    end_of_data = [t for t in trades if t["final_exit_reason"] == "END_OF_DATA"]
+    all_trades = summarize(trades)
+    return {
+        **all_trades,
+        "strategy_exits_excluding_end_of_data": summarize(strategy_exits),
+        "end_of_data_liquidations": summarize(end_of_data),
+        "all_trades_including_end_of_data": all_trades,
+    }
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
