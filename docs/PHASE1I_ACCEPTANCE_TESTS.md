@@ -54,3 +54,12 @@ These are implementation acceptance criteria, not claims of live-market validati
 38. Duplicate, missing or out-of-window timestamps fail closed; no synthetic bars are created.
 39. Historical fetch does not read, append, rewrite or otherwise mutate the append-only recorder JSONL.
 40. The backtest report is written to a separate, explicitly supplied output path.
+
+
+## Mechanical/reporting regression checks
+
+- A completed signal candle is recorded with its start and close boundary; the entry timestamp and price come only from the immediately following candle's open. For contiguous candles, the signal-close and next-open timestamps may be equal as a shared boundary.
+- If one post-entry candle touches both protective stop and first target, the stop is processed first, the full remaining position exits at the stop, and no partial exit is recorded.
+- `runner_lots` equals the full original position when no partial exit occurred, and equals the remaining position only after a partial has occurred.
+- Summary output keeps backward-compatible overall metrics and separately reports normal strategy exits, end-of-data liquidations, and all trades including end-of-data.
+- Trade #10's matching 12:30 UTC partial/final timestamps are interpreted using candle intervals: prior candle end versus next candle start. They are not treated as proof of same-candle ambiguity.
