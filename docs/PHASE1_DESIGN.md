@@ -131,7 +131,7 @@ Signal Provider -> Risk Gate -> Order Manager -> Demo Adapter
 - Local output under `data/` is git-ignored. No database, account credentials, private endpoints or order routes.
 - Specification: `docs/PHASE1F_RECORDER_SPEC.md`; acceptance plan: `docs/PHASE1F_ACCEPTANCE_TESTS.md`.
 
-### 1G — Historical JSONL integrity, recovery validation and data-quality reporting — UNDER REVIEW
+### 1G — Historical JSONL integrity, recovery validation and data-quality reporting — CLOSED
 - Audit JSONL structure, candle provenance, UTC alignment, duplicate/out-of-order starts and missing intervals without modifying source history.
 - Validate bounded public REST gap responses read-only and report unresolved intervals; actual append-only recovery remains the Phase 1F function.
 - Verify restart byte preservation, restored deduplication and append continuity.
