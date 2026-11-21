@@ -63,3 +63,8 @@ These are implementation acceptance criteria, not claims of live-market validati
 - `runner_lots` equals the full original position when no partial exit occurred, and equals the remaining position only after a partial has occurred.
 - Summary output keeps backward-compatible overall metrics and separately reports normal strategy exits, end-of-data liquidations, and all trades including end-of-data.
 - Trade #10's matching 12:30 UTC partial/final timestamps are interpreted using candle intervals: prior candle end versus next candle start. They are not treated as proof of same-candle ambiguity.
+- With pullback entry and minimum first-target R:R enabled, Setup A eligibility is screened at signal close using the resting limit, signal-derived stop and nearest eligible completed prior-session AMT Target 1. Low-R:R signals are rejected before an order is placed; post-fill R:R rejections must be zero.
+- Target 1 and the next-AMT runner reference are fixed at signal close from the resting limit and are not re-selected using later fill prices.
+- With `--pullback-require-tick-through`, a buy limit fills only if the candle low is at least one instrument tick below the limit; a sell limit fills only if the candle high is at least one tick above. A mere touch does not fill.
+- With tick-through enabled, an opening gap at least one tick beyond the limit fills at the better opening price and is taker; a later qualifying penetration fills at the resting limit and is maker when `--pullback-maker-entry` is enabled. Setup B next-open entries and all exits remain taker.
+- Pullback order accounting reconciles placed = filled + expired + stop-invalidated + pending; filled = accepted, with zero post-fill minimum-R:R rejections.
