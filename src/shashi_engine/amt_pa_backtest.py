@@ -555,6 +555,10 @@ def run_backtest(candles: Sequence[Candle], instrument: Instrument, fee_schedule
                     pullback_orders_expired += 1
                     pending = None
 
+        if pending is not None and active is None:
+            # Keep the single outstanding order alive; do not replace it with a later signal.
+            continue
+
         if active is not None:
             signal = active["signal"]
             assert isinstance(signal, Signal)
