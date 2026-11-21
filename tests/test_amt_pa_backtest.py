@@ -111,5 +111,5 @@ def test_engine_rejects_duplicates_and_out_of_order():
 
 
 def test_even_lot_requirement_for_partial():
-    with pytest.raises(ValueError, match="even whole-number"):
+    with pytest.raises(ValueError, match="even whole number"):
         BacktestConfig(position_lots=1)
