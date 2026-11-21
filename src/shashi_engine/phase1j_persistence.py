@@ -333,6 +333,15 @@ class DurableSafetyStore:
             "CANCELLED", "FILLED", "REJECTED", "RECONCILIATION_BLOCKED",
         }:
             raise ValueError("unsupported intent status")
+        allowed = {
+            "INTENT_RECORDED": {"SUBMISSION_UNKNOWN", "EXCHANGE_CONFIRMED", "REJECTED", "RECONCILIATION_BLOCKED"},
+            "SUBMISSION_UNKNOWN": {"EXCHANGE_CONFIRMED", "CANCELLED", "FILLED", "REJECTED", "RECONCILIATION_BLOCKED"},
+            "EXCHANGE_CONFIRMED": {"CANCELLED", "FILLED", "RECONCILIATION_BLOCKED"},
+            "CANCELLED": {"RECONCILIATION_BLOCKED"},
+            "FILLED": {"RECONCILIATION_BLOCKED"},
+            "REJECTED": {"RECONCILIATION_BLOCKED"},
+            "RECONCILIATION_BLOCKED": set(),
+        }
         try:
             with self._connect() as conn:
                 row = conn.execute(
@@ -341,6 +350,10 @@ class DurableSafetyStore:
                 ).fetchone()
                 if row is None:
                     raise PersistenceError("unknown client order ID")
+                if status != row["status"] and status not in allowed[row["status"]]:
+                    raise PersistenceError(
+                        f"illegal intent status transition: {row['status']} -> {status}"
+                    )
                 conn.execute(
                     "UPDATE order_intents SET status=? WHERE client_order_id=?",
                     (status, client_order_id),
