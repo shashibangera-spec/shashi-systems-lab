@@ -124,6 +124,10 @@ def main() -> int:
         "--runner-breakeven", action="store_true",
         help="after a confirmed 50%% target partial, move the remaining runner stop to fee-adjusted breakeven from the next candle",
     )
+    parser.add_argument(
+        "--runner-breakeven-min-rr", type=Decimal, default=None, metavar="R",
+        help="optional minimum first-target R:R for runner breakeven activation only (e.g. 1.0); omit for all partials",
+    )
     args = parser.parse_args()
 
     try:
@@ -177,6 +181,7 @@ def main() -> int:
             config=BacktestConfig(
                 position_lots=args.position_lots,
                 runner_breakeven=args.runner_breakeven,
+                runner_breakeven_min_rr=args.runner_breakeven_min_rr,
             ),
             metadata_source="Delta India public product verifier",
         )
@@ -201,7 +206,11 @@ def main() -> int:
                 "fee_gst_currency_and_exchange_rounding": "Phase 1E explicit USD scenario assumptions; not exchange-reconciled",
                 "funding_file_supplied": args.funding_csv is not None,
                 "runner_breakeven_enabled": args.runner_breakeven,
-                "runner_breakeven_activation": "next candle after completed-candle partial confirmation",
+                "runner_breakeven_min_first_target_rr": (
+                    str(args.runner_breakeven_min_rr) if args.runner_breakeven_min_rr is not None else None
+                ),
+                "runner_breakeven_gate_scope": "activation only; no effect on entry eligibility, initial stop, target or sizing",
+                "runner_breakeven_activation": "next candle after completed-candle partial confirmation, if optional R:R gate passes",
                 "runner_breakeven_fee_basis": "remaining runner entry taker fee + exit taker fee, both including GST",
             },
             "candles_used": result.candles_used,
