@@ -195,8 +195,10 @@ def measure_trade(trade: Any, candles: list[Candle], index_by_time: dict[datetim
             "original_first_target_reached_after_stop": target_idx is not None,
             "candles_after_stop_until_first_target": target_idx + 1 if target_idx is not None else None,
             "post_stop_observation_end_utc": (
-                post_bars[target_idx].end_time.isoformat()
-                if target_idx is not None else (post_bars[-1].end_time.isoformat() if post_bars else None)
+                post_bars[-1].end_time.isoformat() if post_bars else None
+            ),
+            "first_post_stop_target_touch_utc": (
+                post_bars[target_idx].end_time.isoformat() if target_idx is not None else None
             ),
             "post_stop_target_status": (
                 "TARGET_REACHED_AFTER_STOP" if target_idx is not None
@@ -217,6 +219,7 @@ def measure_trade(trade: Any, candles: list[Candle], index_by_time: dict[datetim
             "original_first_target_reached_after_stop": None,
             "candles_after_stop_until_first_target": None,
             "post_stop_observation_end_utc": None,
+            "first_post_stop_target_touch_utc": None,
             "post_stop_target_status": "NOT_APPLICABLE_NOT_STOPPED_AT_INITIAL_STOP",
             "stop_breach_bucket": None,
         })
@@ -317,7 +320,7 @@ def main() -> int:
                 "mae": "Maximum adverse entry-to-OHLC excursion from entry candle through exit candle, inclusive",
                 "mfe": "Maximum favorable entry-to-OHLC excursion from entry candle through exit candle, inclusive",
                 "stop_breach": "Worst OHLC extreme beyond the initial protective stop on the stop-out candle",
-                "post_stop": "Candles strictly after the stop-out candle; measured until first original target touch or end of fixed window",
+                "post_stop": "Candles strictly after the stop-out candle through the end of the fixed window; separately records the first subsequent original-target touch",
                 "atr": "14-period simple mean true range at the signal candle, matching the strategy's signal-time ATR convention",
                 "intrabar_limitation": "OHLC cannot determine whether stop or target occurred first inside a candle; the stop-out candle is excluded from post-stop recovery credit",
             },
