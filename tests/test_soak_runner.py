@@ -38,3 +38,35 @@ def test_sha256_prefix_rejects_file_shorter_than_requested(tmp_path: Path):
     path.write_bytes(b"short")
     with pytest.raises(ValueError, match="shorter"):
         sha256_prefix(path, 100)
+
+
+def test_runner_executes_three_segments_and_two_restart_pauses(tmp_path, capsys):
+    from subprocess import CompletedProcess
+
+    from scripts.run_btcusd_soak import run_soak
+
+    output = tmp_path / "btc.jsonl"
+    calls = []
+    pauses = []
+
+    def fake_runner(command, *, cwd, timeout):
+        calls.append(command)
+        if command[1].endswith("record_btcusd_market_data.py"):
+            target = Path(command[command.index("--output") + 1])
+            with target.open("ab") as handle:
+                handle.write(b"session-record\\n")
+        return CompletedProcess(command, 0, "ok", "")
+
+    result = run_soak(
+        output_path=str(output),
+        total_recording_seconds=7200,
+        restart_pause_seconds=15,
+        command_runner=fake_runner,
+        sleep=pauses.append,
+    )
+    assert result == 0
+    assert sum(command[1].endswith("record_btcusd_market_data.py") for command in calls) == 3
+    assert sum(command[1].endswith("audit_btcusd_history.py") for command in calls) == 3
+    assert pauses == [15, 15]
+    assert output.read_bytes() == b"session-record\\n" * 3
+    assert '"status": "PASS"' in capsys.readouterr().out
