@@ -122,7 +122,7 @@ def main() -> int:
     parser.add_argument("--position-lots", type=int, default=2)
     parser.add_argument(
         "--runner-breakeven", action="store_true",
-        help="after a confirmed 50% target partial, move the remaining runner stop to fee-adjusted breakeven from the next candle",
+        help="after a confirmed 50%% target partial, move the remaining runner stop to fee-adjusted breakeven from the next candle",
     )
     args = parser.parse_args()
 
