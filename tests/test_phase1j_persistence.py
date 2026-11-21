@@ -264,3 +264,20 @@ def test_status_transition_is_transactionally_audited(tmp_path):
     db.update_intent_status(intent.client_order_id, "EXCHANGE_CONFIRMED")
     ok, count = db.verify_audit_chain()
     assert ok and count == 3
+
+
+
+def test_audit_records_latched_state_after_pnl_recovers(tmp_path):
+    db = store(tmp_path)
+    db.evaluate_daily_loss(
+        "session", Decimal("-2.50"), Decimal("0"), Decimal("0"), Decimal("0")
+    )
+    db.evaluate_daily_loss(
+        "session", Decimal("10"), Decimal("0"), Decimal("0"), Decimal("0")
+    )
+    with sqlite3.connect(db.path) as conn:
+        rows = conn.execute(
+            "SELECT event_type, payload_json FROM audit_events ORDER BY sequence"
+        ).fetchall()
+    assert '"latched":true' in rows[-1][1]
+    assert db.get_session_risk("session").latched
