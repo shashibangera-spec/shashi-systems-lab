@@ -21,7 +21,8 @@ A standalone research and engineering workspace for a modular market-data and si
 - No withdrawal permissions.
 - No connection to the existing BTC dashboard or its production database.
 - No strategy signals connected to execution.
-- Demo execution is not authorized and requires a separate future approval.
+- No live trading, production credentials, private account access or production integrations.
+- Strategy research and Delta Exchange Testnet demo execution are conditional future milestones after Phase 1H acceptance and separate scoped reviews; no live execution is authorized.
 
 ## Public repository warning
 
@@ -33,7 +34,9 @@ See [Phase 1 design](docs/PHASE1_DESIGN.md) for the reconciled milestone roadmap
 
 - **Phase 1E — CLOSED:** non-executing accounting simulator. See [specification](docs/PHASE1E_ACCOUNTING_SIMULATOR_SPEC.md) and [acceptance tests](docs/PHASE1E_ACCEPTANCE_TESTS.md). RiskGate remains USD-only; INR equivalents require explicit fresh FX and are display-only.
 - **Phase 1F — CLOSED:** append-only local recorder, feed-health monitoring and REST gap recovery. See [specification](docs/PHASE1F_RECORDER_SPEC.md) and [acceptance tests](docs/PHASE1F_ACCEPTANCE_TESTS.md).
-- **Phase 1G — UNDER REVIEW:** JSONL history audit, read-only REST gap validation, restart/append integrity and data-quality reporting. See [specification](docs/PHASE1G_HISTORY_INTEGRITY_SPEC.md) and [acceptance tests](docs/PHASE1G_ACCEPTANCE_TESTS.md).
-- **Phase 1H — NOT AUTHORIZED:** demo execution requires separate explicit approval.
+- **Phase 1G — CLOSED:** JSONL history audit, read-only REST gap validation, restart/append integrity and data-quality reporting. See [specification](docs/PHASE1G_HISTORY_INTEGRITY_SPEC.md) and [acceptance tests](docs/PHASE1G_ACCEPTANCE_TESTS.md).
+- **Phase 1H — UNDER REVIEW:** focused 2–4-hour recorder soak with three sessions, two controlled restarts and per-session integrity audits. See [specification](docs/PHASE1H_FOCUSED_SOAK_SPEC.md) and [acceptance tests](docs/PHASE1H_ACCEPTANCE_TESTS.md).
+- **Phase 1I — PLANNED, CONDITIONAL:** strategy research and validation, with no execution adapter.
+- **Phase 1J — PLANNED, CONDITIONAL:** isolated Delta Exchange Testnet demo execution after Phase 1H and strategy gates; never live trading.
 
 The repository uses public market data only and does not place orders or connect to the existing BTC dashboard or its production database.

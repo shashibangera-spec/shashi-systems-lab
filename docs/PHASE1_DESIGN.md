@@ -131,16 +131,28 @@ Signal Provider -> Risk Gate -> Order Manager -> Demo Adapter
 - Local output under `data/` is git-ignored. No database, account credentials, private endpoints or order routes.
 - Specification: `docs/PHASE1F_RECORDER_SPEC.md`; acceptance plan: `docs/PHASE1F_ACCEPTANCE_TESTS.md`.
 
-### 1G — Historical JSONL integrity, recovery validation and data-quality reporting — UNDER REVIEW
+### 1G — Historical JSONL integrity, recovery validation and data-quality reporting — CLOSED
 - Audit JSONL structure, candle provenance, UTC alignment, duplicate/out-of-order starts and missing intervals without modifying source history.
 - Validate bounded public REST gap responses read-only and report unresolved intervals; actual append-only recovery remains the Phase 1F function.
 - Verify restart byte preservation, restored deduplication and append continuity.
 - Produce JSON and Markdown quality reports; no strategy replay or execution is included.
 - Specification: `docs/PHASE1G_HISTORY_INTEGRITY_SPEC.md`; acceptance plan: `docs/PHASE1G_ACCEPTANCE_TESTS.md`.
 
-### 1H — Demo execution — NOT AUTHORIZED
-- No demo order path is included in the current authorization.
-- Any future demo integration requires fresh official endpoint/credential verification, an isolated demo-only adapter, a fail-closed kill switch and separate explicit approval.
+### 1H — Focused recorder soak and controlled restart validation — UNDER REVIEW
+- Run 2–4 hours of active public BTCUSD 30m recording across three sequential recorder processes and exactly two controlled clean restarts.
+- Verify the append-only byte prefix after each session and run Phase 1G audit/restart checks after every segment.
+- Record feed errors, reconnects, recovery outcomes and safety metadata; a short pass is not a long-term reliability certification.
+- Specification: `docs/PHASE1H_FOCUSED_SOAK_SPEC.md`; acceptance plan: `docs/PHASE1H_ACCEPTANCE_TESTS.md`.
+
+### 1I — Strategy research and validation — PLANNED, CONDITIONAL
+- Begins only after Phase 1H acceptance. First approve a written strategy specification covering signal rules, completed-candle timing, costs/funding/slippage, risk limits and out-of-sample evaluation.
+- Research and simulation only; no execution adapter or live orders.
+
+### 1J — Delta Exchange Testnet demo execution — PLANNED, CONDITIONAL
+- Intended after Phase 1H and Phase 1I review, as a separate implementation and PR.
+- Re-verify official Testnet endpoints and product behavior before coding. Isolate Testnet-only credentials and host allowlists; fail closed on any live/production host.
+- Require a kill switch, strict order/risk caps, idempotency, audit logs and tests proving production hosts are rejected.
+- No production credentials, live endpoints, withdrawals or real-money orders; this milestone does not authorize live trading.
 
 ## Endpoint notes
 
