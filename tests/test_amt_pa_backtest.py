@@ -470,7 +470,7 @@ def test_runner_next_amt_target_requires_fee_adjusted_breakeven():
         BacktestConfig(runner_next_amt_target=True)
 
 
-def _pullback_test_run(monkeypatch, entry_bar, *, min_rr=None, limit_bars=3):
+def _pullback_test_run(monkeypatch, entry_bar, *, min_rr=None, limit_bars=3, require_tick_through=False):
     import shashi_engine.amt_pa_backtest as engine
     from shashi_engine.amt_pa_backtest import SessionProfile
 
@@ -496,6 +496,7 @@ def _pullback_test_run(monkeypatch, entry_bar, *, min_rr=None, limit_bars=3):
     cfg = BacktestConfig(
         pullback_entry=True, pullback_limit_bars=limit_bars,
         min_first_target_rr=min_rr,
+        pullback_require_tick_through=require_tick_through,
     )
     return run_backtest(
         bars, instrument(),
@@ -553,9 +554,11 @@ def test_pullback_entry_recalculates_first_target_rr_from_actual_fill(monkeypatc
     assert len(result.skipped_low_first_target_rr) == 1
     assert result.skipped_low_first_target_rr[0].entry_price == Decimal("60000")
     assert result.skipped_low_first_target_rr[0].first_target_rr == Decimal("0.5")
-    assert result.pullback_orders_filled == 1
+    assert result.pullback_orders_placed == 0
+    assert result.pullback_orders_filled == 0
     assert result.pullback_orders_accepted == 0
-    assert result.pullback_orders_rejected_low_rr == 1
+    assert result.pullback_orders_rejected_low_rr_before_placement == 1
+    assert result.pullback_orders_rejected_low_rr == 0
 
 
 def test_pullback_limit_uses_open_price_if_market_gaps_through_limit(monkeypatch):
