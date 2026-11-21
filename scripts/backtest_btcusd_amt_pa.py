@@ -120,6 +120,10 @@ def main() -> int:
     parser.add_argument("--funding-csv", type=Path)
     parser.add_argument("--output", type=Path, default=Path("data/reports/phase1i_backtest.json"))
     parser.add_argument("--position-lots", type=int, default=2)
+    parser.add_argument(
+        "--runner-breakeven", action="store_true",
+        help="after a confirmed 50% target partial, move the remaining runner stop to fee-adjusted breakeven from the next candle",
+    )
     args = parser.parse_args()
 
     try:
@@ -170,7 +174,10 @@ def main() -> int:
             candles, instrument, fee_schedule,
             AccountingPolicy(max_fx_age=timedelta(minutes=10)),
             funding_events=funding,
-            config=BacktestConfig(position_lots=args.position_lots),
+            config=BacktestConfig(
+                position_lots=args.position_lots,
+                runner_breakeven=args.runner_breakeven,
+            ),
             metadata_source="Delta India public product verifier",
         )
         trades = [json_value(asdict(trade)) for trade in result.trades]
@@ -193,6 +200,9 @@ def main() -> int:
                 "taker_fee": "0.0005", "gst_on_fee": "0.18",
                 "fee_gst_currency_and_exchange_rounding": "Phase 1E explicit USD scenario assumptions; not exchange-reconciled",
                 "funding_file_supplied": args.funding_csv is not None,
+                "runner_breakeven_enabled": args.runner_breakeven,
+                "runner_breakeven_activation": "next candle after completed-candle partial confirmation",
+                "runner_breakeven_fee_basis": "remaining runner entry taker fee + exit taker fee, both including GST",
             },
             "candles_used": result.candles_used,
             "historical_fetch_window": fetch_window,
