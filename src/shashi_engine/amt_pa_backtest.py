@@ -42,6 +42,7 @@ class BacktestConfig:
     rejection_close_fraction: Decimal = Decimal("0.60")
     position_lots: int = 2
     stop_pad_ticks: int = 1
+    stop_atr_multiplier: Decimal = Decimal("0")
     runner_breakeven: bool = False
     runner_breakeven_min_rr: Decimal | None = None
     min_first_target_rr: Decimal | None = None
@@ -61,6 +62,8 @@ class BacktestConfig:
             raise ValueError("position_lots must be an even whole number >= 2 for a 50% partial")
         if self.stop_pad_ticks < 1:
             raise ValueError("stop_pad_ticks must be at least one tick")
+        if not self.stop_atr_multiplier.is_finite() or self.stop_atr_multiplier < 0:
+            raise ValueError("stop_atr_multiplier must be a finite non-negative Decimal")
         if self.runner_breakeven_min_rr is not None and (
             not self.runner_breakeven_min_rr.is_finite() or self.runner_breakeven_min_rr <= 0
         ):
@@ -284,8 +287,7 @@ def _signal_at(candles: Sequence[Candle], index: int, profiles: dict[date, Sessi
     target = _target(direction, entry, history)
     if target is None:
         return None, True
-    pad = instrument.tick_size * config.stop_pad_ticks
-    stop = candle.low - pad if direction == "long" else candle.high + pad
+    stop = _initial_stop(candle, direction, atr, instrument, config)
     if (direction == "long" and stop >= entry) or (direction == "short" and stop <= entry):
         return None, False
     return Signal(index, setup, direction, level, stop, target[0], target[1], atr), False
