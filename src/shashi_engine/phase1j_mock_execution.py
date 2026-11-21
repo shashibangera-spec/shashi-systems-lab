@@ -146,6 +146,7 @@ class Reconciliation:
     exchange_open_order_ids: frozenset[str]
     fills_complete: bool
     audit_complete: bool
+    exchange_live_entry_lots: int = 0
 
     @property
     def clean(self) -> bool:
@@ -157,6 +158,8 @@ class Reconciliation:
             and self.fills_complete
             and self.audit_complete
             and self.exchange_position_lots >= 0
+            and self.exchange_live_entry_lots >= 0
+            and self.exchange_position_lots + self.exchange_live_entry_lots <= MAX_POSITION_LOTS
         )
 
 
@@ -189,9 +192,16 @@ class MockExecutionMachine:
     intents: IntentRegistry = field(default_factory=IntentRegistry)
 
     def transition(self, target: State) -> None:
+        if self.state in {State.ENTRY_WORKING, State.ENTRY_CANCEL_PENDING} and target is State.POSITION_OPEN:
+            raise SafetyError("entry fills require confirm_entry_fill() with verified protection")
         if target not in _ALLOWED.get(self.state, frozenset()):
             raise SafetyError(f"illegal transition: {self.state.value} -> {target.value}")
         self.state = target
+
+    def confirm_entry_fill(self, protective_coverage_confirmed: bool) -> None:
+        if self.state not in {State.ENTRY_WORKING, State.ENTRY_CANCEL_PENDING}:
+            raise SafetyError("entry fill confirmation requires a working entry")
+        self.state = State.POSITION_OPEN if protective_coverage_confirmed else State.PROTECTION_FAULT
 
     def preflight(self, origin: str, risk_store_writable: bool, audit_writable: bool) -> None:
         if self.state is not State.DISARMED:
