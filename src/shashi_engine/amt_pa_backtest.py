@@ -50,6 +50,7 @@ class BacktestConfig:
     pullback_entry: bool = False
     pullback_limit_bars: int = 3
     pullback_maker_entry: bool = False
+    pullback_require_tick_through: bool = False
 
     def __post_init__(self) -> None:
         if not self.row_size.is_finite() or self.row_size <= 0:
@@ -163,6 +164,7 @@ class BacktestResult:
     pullback_orders_rejected_low_rr: int = 0
     pullback_orders_rejected_no_reference: int = 0
     pullback_orders_unfilled_at_end: int = 0
+    pullback_orders_rejected_low_rr_before_placement: int = 0
 
 
 def session_date_for(candle: Candle) -> date:
@@ -472,6 +474,7 @@ def run_backtest(candles: Sequence[Candle], instrument: Instrument, fee_schedule
     pullback_orders_accepted = 0
     pullback_orders_expired = pullback_orders_invalidated = 0
     pullback_orders_rejected_low_rr = pullback_orders_rejected_no_reference = 0
+    pullback_orders_rejected_low_rr_before_placement = 0
     next_trade_id = 1
 
     for i, candle in enumerate(ordered):
@@ -491,83 +494,66 @@ def run_backtest(candles: Sequence[Candle], instrument: Instrument, fee_schedule
                 pending = None
             else:
                 limit_price = pending_signal.thesis_level
-                limit_touched = (
-                    candle.low <= limit_price if pending_signal.direction == "long"
-                    else candle.high >= limit_price
-                )
-                if limit_touched and elapsed_bars <= config.pullback_limit_bars:
-                    improved_open = (
+                if config.pullback_require_tick_through:
+                    through_price = (
+                        limit_price - instrument.tick_size if pending_signal.direction == "long"
+                        else limit_price + instrument.tick_size
+                    )
+                    opening_gap_through = (
+                        candle.open <= through_price if pending_signal.direction == "long"
+                        else candle.open >= through_price
+                    )
+                    limit_touched = (
+                        candle.low <= through_price if pending_signal.direction == "long"
+                        else candle.high >= through_price
+                    )
+                else:
+                    opening_gap_through = (
                         candle.open <= limit_price if pending_signal.direction == "long"
                         else candle.open >= limit_price
                     )
-                    fill_price = candle.open if improved_open else limit_price
+                    limit_touched = (
+                        candle.low <= limit_price if pending_signal.direction == "long"
+                        else candle.high >= limit_price
+                    )
+                if limit_touched and elapsed_bars <= config.pullback_limit_bars:
+                    fill_price = candle.open if opening_gap_through else limit_price
                     if ((pending_signal.direction == "long" and fill_price <= pending_signal.stop_price)
                         or (pending_signal.direction == "short" and fill_price >= pending_signal.stop_price)):
                         pullback_orders_invalidated += 1
                         pending = None
                     else:
                         pullback_orders_filled += 1
-                        if improved_open:
+                        if opening_gap_through:
                             pullback_orders_gap_through += 1
                             entry_liquidity = "taker"
                         else:
                             pullback_orders_filled_at_limit += 1
                             entry_liquidity = "maker" if config.pullback_maker_entry else "taker"
-                        history = _profile_history(
-                            profiles, session_date_for(ordered[pending_signal.index]),
-                            config.prior_sessions_for_targets,
-                        )
-                        first_target = _target(pending_signal.direction, fill_price, history)
-                        if first_target is None:
-                            skipped_no_reference += 1
-                            pullback_orders_rejected_no_reference += 1
-                            pending = None
-                        else:
-                            next_ref = _next_target(pending_signal.direction, first_target[0], history)
-                            filled_signal = Signal(
-                                pending_signal.index, pending_signal.setup, pending_signal.direction,
-                                pending_signal.thesis_level, pending_signal.stop_price,
-                                first_target[0], first_target[1], pending_signal.atr,
-                                next_ref[0] if next_ref else None,
-                                next_ref[1] if next_ref else None,
+                        # Target 1 and the next-AMT runner reference were fixed at signal close
+                        # from the resting limit price. Never re-select them using later prices.
+                        filled_signal = pending_signal
+                        if (config.min_first_target_rr is not None
+                            and abs(filled_signal.target_price - fill_price)
+                            / abs(fill_price - filled_signal.stop_price) < config.min_first_target_rr):
+                            raise AssertionError(
+                                "pre-order pullback R:R screening was not conservative for the actual fill"
                             )
-                            first_target_rr = (
-                                abs(filled_signal.target_price - fill_price)
-                                / abs(fill_price - filled_signal.stop_price)
-                            )
-                            if (config.min_first_target_rr is not None
-                                and first_target_rr < config.min_first_target_rr):
-                                skipped_low_first_target_rr.append(SkippedFirstTargetRR(
-                                    setup=filled_signal.setup,
-                                    direction=filled_signal.direction,
-                                    signal_candle_start_time=ordered[filled_signal.index].start_time,
-                                    signal_time=ordered[filled_signal.index].end_time,
-                                    entry_time=candle.start_time,
-                                    entry_price=fill_price,
-                                    stop_price=filled_signal.stop_price,
-                                    first_target=filled_signal.target_price,
-                                    target_source=filled_signal.target_source,
-                                    first_target_rr=first_target_rr,
-                                    minimum_first_target_rr=config.min_first_target_rr,
-                                ))
-                                pullback_orders_rejected_low_rr += 1
-                                pending = None
-                            else:
-                                active = {
-                                    "trade_id": next_trade_id, "signal": filled_signal,
-                                    "entry_index": i, "entry_time": candle.start_time,
-                                    "entry_price": fill_price, "entry_liquidity": entry_liquidity,
-                                    "stop": filled_signal.stop_price,
-                                    "target": filled_signal.target_price, "partial_time": None,
-                                    "partial_price": None, "pending_exit": None,
-                                    "breakeven_activated": False,
-                                }
-                                next_trade_id += 1
-                                pullback_orders_accepted += 1
-                                pending = None
-                                # Do not award Target 1 on the same OHLC bar as an
-                                # intrabar limit fill; its ordering relative to entry is unknown.
-                                continue
+                        active = {
+                            "trade_id": next_trade_id, "signal": filled_signal,
+                            "entry_index": i, "entry_time": candle.start_time,
+                            "entry_price": fill_price, "entry_liquidity": entry_liquidity,
+                            "stop": filled_signal.stop_price,
+                            "target": filled_signal.target_price, "partial_time": None,
+                            "partial_price": None, "pending_exit": None,
+                            "breakeven_activated": False,
+                        }
+                        next_trade_id += 1
+                        pullback_orders_accepted += 1
+                        pending = None
+                        # Do not award Target 1 on the same OHLC bar as an
+                        # intrabar limit fill; its ordering relative to entry is unknown.
+                        continue
                 elif elapsed_bars >= config.pullback_limit_bars:
                     pullback_orders_expired += 1
                     pending = None
@@ -667,6 +653,30 @@ def run_backtest(candles: Sequence[Candle], instrument: Instrument, fee_schedule
             if signal is None:
                 continue
             if config.pullback_entry and signal.setup == "A_FAILED_AUCTION":
+                # Limit, initial stop and nearest eligible AMT target are fixed at
+                # signal close. Screen R:R before counting/placing a resting order.
+                if config.min_first_target_rr is not None:
+                    limit_price = signal.thesis_level
+                    limit_rr = (
+                        abs(signal.target_price - limit_price)
+                        / abs(limit_price - signal.stop_price)
+                    )
+                    if limit_rr < config.min_first_target_rr:
+                        skipped_low_first_target_rr.append(SkippedFirstTargetRR(
+                            setup=signal.setup,
+                            direction=signal.direction,
+                            signal_candle_start_time=ordered[signal.index].start_time,
+                            signal_time=ordered[signal.index].end_time,
+                            entry_time=ordered[i + 1].start_time,
+                            entry_price=limit_price,
+                            stop_price=signal.stop_price,
+                            first_target=signal.target_price,
+                            target_source=signal.target_source,
+                            first_target_rr=limit_rr,
+                            minimum_first_target_rr=config.min_first_target_rr,
+                        ))
+                        pullback_orders_rejected_low_rr_before_placement += 1
+                        continue
                 pending = {"signal": signal}
                 pullback_orders_placed += 1
                 continue
@@ -724,4 +734,5 @@ def run_backtest(candles: Sequence[Candle], instrument: Instrument, fee_schedule
         pullback_orders_gap_through, pullback_orders_accepted, pullback_orders_expired,
         pullback_orders_invalidated, pullback_orders_rejected_low_rr,
         pullback_orders_rejected_no_reference, pullback_orders_unfilled_at_end,
+        pullback_orders_rejected_low_rr_before_placement,
     )
