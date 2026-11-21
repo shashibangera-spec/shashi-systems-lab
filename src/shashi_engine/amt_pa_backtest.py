@@ -355,16 +355,18 @@ def _signal_at(candles: Sequence[Candle], index: int, profiles: dict[date, Sessi
 
 
 def _runner_breakeven_stop(entry_price: Decimal, direction: Direction,
-                           fee_schedule: FeeSchedule, tick_size: Decimal) -> Decimal:
-    """Return a tick-rounded stop that covers runner entry and taker exit fees plus GST."""
-    effective_rate = fee_schedule.taker_rate * (Decimal(1) + fee_schedule.gst_rate)
-    if not Decimal(0) <= effective_rate < Decimal(1):
-        raise ValueError("effective taker fee including GST must be in [0, 1)")
+                           fee_schedule: FeeSchedule, tick_size: Decimal,
+                           entry_liquidity: Literal["maker", "taker"] = "taker") -> Decimal:
+    """Return a tick-rounded stop covering actual entry fees and conservative taker exit fees, GST included."""
+    entry_rate = (fee_schedule.maker_rate if entry_liquidity == "maker" else fee_schedule.taker_rate) * (Decimal(1) + fee_schedule.gst_rate)
+    exit_rate = fee_schedule.taker_rate * (Decimal(1) + fee_schedule.gst_rate)
+    if not (Decimal(0) <= entry_rate < Decimal(1) and Decimal(0) <= exit_rate < Decimal(1)):
+        raise ValueError("effective entry and exit fees including GST must be in [0, 1)")
     if direction == "long":
-        raw = entry_price * (Decimal(1) + effective_rate) / (Decimal(1) - effective_rate)
+        raw = entry_price * (Decimal(1) + entry_rate) / (Decimal(1) - exit_rate)
         ticks = (raw / tick_size).to_integral_value(rounding="ROUND_CEILING")
     else:
-        raw = entry_price * (Decimal(1) - effective_rate) / (Decimal(1) + effective_rate)
+        raw = entry_price * (Decimal(1) - entry_rate) / (Decimal(1) + exit_rate)
         ticks = (raw / tick_size).to_integral_value(rounding="ROUND_FLOOR")
     return ticks * tick_size
 
@@ -606,7 +608,8 @@ def run_backtest(candles: Sequence[Candle], instrument: Instrument, fee_schedule
                 )
                 if rr_gate_passed:
                     active["stop"] = _runner_breakeven_stop(
-                        active["entry_price"], signal.direction, fee_schedule, instrument.tick_size
+                        active["entry_price"], signal.direction, fee_schedule, instrument.tick_size,
+                        active["entry_liquidity"],
                     )
                     active["breakeven_activated"] = True
 
