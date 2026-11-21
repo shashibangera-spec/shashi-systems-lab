@@ -133,10 +133,10 @@ def test_rest_gap_validation_is_read_only_and_reports_missing(tmp_path):
     assert path.read_bytes() == before
 
 
-def test_rest_gap_validation_ignores_adjacent_boundary_candles():
+def test_rest_gap_validation_sorts_newest_first_and_ignores_boundaries():
     result = validate_rest_gap(
         int(T0.timestamp()), int((T0 + timedelta(minutes=60)).timestamp()),
-        fetcher=lambda *_: [candle(-30), candle(0), candle(30), candle(60)],
+        fetcher=lambda *_: [candle(60), candle(30), candle(0), candle(-30)],
     )
     assert result["valid"]
     assert result["returned"] == [T0.isoformat(), (T0 + timedelta(minutes=30)).isoformat()]

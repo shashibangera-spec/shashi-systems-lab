@@ -168,7 +168,6 @@ def recover_missing_candles(
     returned_candles = list(fetcher(start_epoch, end_epoch, "30m"))
     expected = set(range(start_epoch, end_epoch, INTERVAL_SECONDS))
     seen: set[int] = set()
-    previous: int | None = None
     candles: list[Candle] = []
     for candle in returned_candles:
         if not isinstance(candle, Candle) or candle.symbol != "BTCUSD" or candle.resolution != "30m":
@@ -183,11 +182,15 @@ def recover_missing_candles(
             raise RecorderError("REST recovery returned a candle outside the requested gap")
         if stamp in seen:
             raise RecorderError("REST recovery returned duplicate candle timestamps")
-        if previous is not None and stamp < previous:
-            raise RecorderError("REST recovery returned out-of-order candles")
         seen.add(stamp)
-        previous = stamp
         candles.append(candle)
+
+    # Delta may return newest-first. Normalize the filtered, unique candidates
+    # before appending so the JSONL history remains chronological.
+    candles.sort(key=lambda item: item.start_time)
+    ordered_stamps = [int(item.start_time.timestamp()) for item in candles]
+    if ordered_stamps != sorted(seen) or any(stamp not in expected for stamp in ordered_stamps):
+        raise RecorderError("REST recovery candles do not match requested intervals in ascending order")
 
     recovered: list[str] = []
     for candle in candles:

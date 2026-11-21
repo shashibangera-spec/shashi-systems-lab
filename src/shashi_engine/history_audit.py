@@ -208,7 +208,6 @@ def validate_rest_gap(
         return {"requested_intervals": 0, "returned": [], "unresolved": [], "valid": True}
     returned_candles = list(fetcher(start_epoch, end_epoch, "30m"))
     seen: set[int] = set()
-    previous: int | None = None
     candles: list[Candle] = []
     expected_set = set(expected)
     for candle in returned_candles:
@@ -223,11 +222,14 @@ def validate_rest_gap(
             raise RecorderError("REST gap check returned candle outside requested gap")
         if stamp in seen:
             raise RecorderError("REST gap check returned duplicate timestamps")
-        if previous is not None and stamp < previous:
-            raise RecorderError("REST gap check returned out-of-order candles")
         seen.add(stamp)
-        previous = stamp
         candles.append(candle)
+
+    # Normalize Delta's newest-first response into ascending requested order.
+    candles.sort(key=lambda item: item.start_time)
+    ordered_stamps = [int(item.start_time.timestamp()) for item in candles]
+    if ordered_stamps != sorted(seen) or any(stamp not in expected_set for stamp in ordered_stamps):
+        raise RecorderError("REST gap candles do not match requested intervals in ascending order")
     unresolved = [
         datetime.fromtimestamp(stamp, timezone.utc).isoformat()
         for stamp in expected if stamp not in seen

@@ -112,14 +112,18 @@ def test_recovery_rejects_duplicate_rest_candles_before_writing(tmp_path):
     assert not (tmp_path / "btc.jsonl").exists()
 
 
-def test_recovery_rejects_out_of_order_rest_candles_before_writing(tmp_path):
+def test_recovery_sorts_newest_first_rest_response_before_writing(tmp_path):
     recorder = AppendOnlyJsonlRecorder(tmp_path / "btc.jsonl")
-    with pytest.raises(RecorderError, match="out-of-order"):
-        recover_missing_candles(
-            recorder, start_epoch=epoch(T0), end_epoch=epoch(T0 + timedelta(minutes=60)),
-            fetcher=lambda *_: [candle(30), candle(0)], max_intervals=2,
-        )
-    assert not (tmp_path / "btc.jsonl").exists()
+    result = recover_missing_candles(
+        recorder, start_epoch=epoch(T0), end_epoch=epoch(T0 + timedelta(minutes=90)),
+        fetcher=lambda *_: [candle(60), candle(30), candle(0)],
+        max_intervals=3,
+    )
+    expected = [T0.isoformat(), (T0 + timedelta(minutes=30)).isoformat(), (T0 + timedelta(minutes=60)).isoformat()]
+    assert result["recovered"] == expected
+    assert result["unresolved"] == []
+    rows = [json.loads(line) for line in (tmp_path / "btc.jsonl").read_text().splitlines()]
+    assert [row["candle_start_utc"] for row in rows if row["record_type"] == "rest_recovery"] == expected
 
 
 def test_recovery_ignores_adjacent_rest_boundary_candles(tmp_path):
