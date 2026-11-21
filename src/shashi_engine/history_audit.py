@@ -83,52 +83,52 @@ def audit_jsonl_history(path: str | Path) -> HistoryAudit:
     target = Path(path)
     if not target.exists():
         raise FileNotFoundError(f"JSONL history does not exist: {target}")
-    before = target.read_bytes()
-    digest = hashlib.sha256(before).hexdigest()
+    digest = hashlib.sha256()
+    file_bytes = 0
     malformed: list[str] = []
     structural: list[str] = []
     recovery_issues: list[str] = []
     records: list[dict[str, Any]] = []
     candles: list[tuple[int, Candle, str]] = []
     recovery_reports: list[dict[str, Any]] = []
-
-    try:
-        text = before.decode("utf-8")
-    except UnicodeDecodeError as exc:
-        text = before.decode("utf-8", errors="replace")
-        malformed.append(f"file is not valid UTF-8: {exc}")
-    if before and not before.endswith(b"\n"):
-        malformed.append("final JSONL record is unterminated")
-
-    for line_number, line in enumerate(text.splitlines(keepends=True), start=1):
-        if not line.endswith("\n"):
-            continue
-        raw = line[:-1]
-        if not raw.strip():
-            malformed.append(f"line {line_number}: blank line")
-            continue
-        try:
-            record = json.loads(raw)
-        except json.JSONDecodeError as exc:
-            malformed.append(f"line {line_number}: invalid JSON ({exc.msg})")
-            continue
-        if not isinstance(record, dict) or not isinstance(record.get("record_type"), str):
-            structural.append(f"line {line_number}: record must be an object with record_type")
-            continue
-        records.append(record)
-        if "recorded_at_utc" in record:
+    with target.open("rb") as handle:
+        for line_number, raw_line in enumerate(handle, start=1):
+            digest.update(raw_line)
+            file_bytes += len(raw_line)
+            if not raw_line.endswith(b"\n"):
+                malformed.append(f"line {line_number}: unterminated JSONL record")
+                continue
             try:
-                _parse_utc(record["recorded_at_utc"], "recorded_at_utc")
-            except ValueError as exc:
-                structural.append(f"line {line_number}: {exc}")
-        if record["record_type"] in CANONICAL_TYPES:
+                line = raw_line[:-1].decode("utf-8")
+            except UnicodeDecodeError as exc:
+                malformed.append(f"line {line_number}: invalid UTF-8 ({exc})")
+                continue
+            if not line.strip():
+                malformed.append(f"line {line_number}: blank line")
+                continue
             try:
-                candle = _canonical_candle(record, line_number)
-                candles.append((line_number, candle, record["record_type"]))
-            except ValueError as exc:
-                structural.append(str(exc))
-        elif record["record_type"] == "recovery_report":
-            recovery_reports.append(record)
+                record = json.loads(line)
+            except json.JSONDecodeError as exc:
+                malformed.append(f"line {line_number}: invalid JSON ({exc.msg})")
+                continue
+            if not isinstance(record, dict) or not isinstance(record.get("record_type"), str):
+                structural.append(f"line {line_number}: record must be an object with record_type")
+                continue
+            records.append(record)
+            if "recorded_at_utc" in record:
+                try:
+                    _parse_utc(record["recorded_at_utc"], "recorded_at_utc")
+                except ValueError as exc:
+                    structural.append(f"line {line_number}: {exc}")
+            if record["record_type"] in CANONICAL_TYPES:
+                try:
+                    candle = _canonical_candle(record, line_number)
+                    candles.append((line_number, candle, record["record_type"]))
+                except ValueError as exc:
+                    structural.append(str(exc))
+            elif record["record_type"] == "recovery_report":
+                recovery_reports.append(record)
+    sha256_before = digest.hexdigest()
 
     starts = [item[1].start_time for item in candles]
     seen: set[datetime] = set()
@@ -182,7 +182,7 @@ def audit_jsonl_history(path: str | Path) -> HistoryAudit:
         malformed, structural, recovery_issues, duplicates, out_of_order, missing, unresolved_count
     ))
     return HistoryAudit(
-        path=str(target), file_bytes=len(before), sha256_before=digest,
+        path=str(target), file_bytes=file_bytes, sha256_before=sha256_before,
         total_records=len(records), canonical_candles=len(candles),
         websocket_candles=ws_count, rest_recovery_candles=rest_count,
         duplicate_starts=tuple(duplicates), out_of_order_pairs=tuple(out_of_order),
@@ -238,14 +238,21 @@ def validate_rest_gap(
 def verify_restart_integrity(path: str | Path) -> dict[str, Any]:
     """Reopen an existing log and prove initialization leaves its bytes unchanged."""
     target = Path(path)
-    before = target.read_bytes()
-    before_hash = hashlib.sha256(before).hexdigest()
+    def fingerprint() -> tuple[int, str]:
+        digest = hashlib.sha256()
+        size = 0
+        with target.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+                size += len(chunk)
+        return size, digest.hexdigest()
+
+    bytes_before, before_hash = fingerprint()
     recorder = AppendOnlyJsonlRecorder(target)
-    after = target.read_bytes()
-    after_hash = hashlib.sha256(after).hexdigest()
-    unchanged = before == after
+    bytes_after, after_hash = fingerprint()
+    unchanged = bytes_before == bytes_after and before_hash == after_hash
     return {
-        "path": str(target), "bytes_before": len(before), "bytes_after": len(after),
+        "path": str(target), "bytes_before": bytes_before, "bytes_after": bytes_after,
         "sha256_before": before_hash, "sha256_after": after_hash,
         "history_unchanged": unchanged,
         "latest_candle_start_utc": (

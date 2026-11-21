@@ -73,14 +73,14 @@ def main() -> int:
         first = audit["first_candle_start_utc"]
         last = audit["last_candle_start_utc"]
         if first and last:
-            import json as _json
             present = set()
-            for line in source.read_text(encoding="utf-8").splitlines():
-                record = _json.loads(line)
-                if record.get("record_type") in ("completed_candle", "rest_recovery"):
-                    present.add(int(datetime.fromisoformat(
-                        record["candle_start_utc"].replace("Z", "+00:00")
-                    ).timestamp()))
+            with source.open("r", encoding="utf-8") as handle:
+                for line in handle:
+                    record = json.loads(line)
+                    if record.get("record_type") in ("completed_candle", "rest_recovery"):
+                        present.add(int(datetime.fromisoformat(
+                            record["candle_start_utc"].replace("Z", "+00:00")
+                        ).timestamp()))
             ordered = sorted(present)
             for left, right in zip(ordered, ordered[1:]):
                 if right - left <= 1800:
