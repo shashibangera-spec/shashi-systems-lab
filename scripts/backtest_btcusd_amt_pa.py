@@ -128,6 +128,10 @@ def main() -> int:
         "--runner-breakeven-min-rr", type=Decimal, default=None, metavar="R",
         help="optional minimum first-target R:R for runner breakeven activation only (e.g. 1.0); omit for all partials",
     )
+    parser.add_argument(
+        "--min-first-target-rr", type=Decimal, default=None, metavar="R",
+        help="skip entries whose nearest eligible prior-session AMT first target is below this R:R (e.g. 1.0); default off",
+    )
     args = parser.parse_args()
 
     try:
@@ -182,6 +186,7 @@ def main() -> int:
                 position_lots=args.position_lots,
                 runner_breakeven=args.runner_breakeven,
                 runner_breakeven_min_rr=args.runner_breakeven_min_rr,
+                min_first_target_rr=args.min_first_target_rr,
             ),
             metadata_source="Delta India public product verifier",
         )
@@ -212,12 +217,20 @@ def main() -> int:
                 "runner_breakeven_gate_scope": "activation only; no effect on entry eligibility, initial stop, target or sizing",
                 "runner_breakeven_activation": "next candle after completed-candle partial confirmation, if optional R:R gate passes",
                 "runner_breakeven_fee_basis": "remaining runner entry taker fee + exit taker fee, both including GST",
+                "minimum_first_target_rr": (
+                    str(args.min_first_target_rr) if args.min_first_target_rr is not None else None
+                ),
+                "minimum_first_target_rr_gate_scope": "entry eligibility only; rejects signals below threshold after next-open entry price and nearest eligible prior-session AMT target are known",
             },
             "candles_used": result.candles_used,
             "historical_fetch_window": fetch_window,
             "complete_profiles": len(result.profiles),
             "skipped_no_reference": result.skipped_no_reference,
             "skipped_invalid_stop": result.skipped_invalid_stop,
+            "skipped_low_first_target_rr_count": len(result.skipped_low_first_target_rr),
+            "skipped_low_first_target_rr": json_value([
+                asdict(item) for item in result.skipped_low_first_target_rr
+            ]),
             "summary": summary_for(trades),
             "trades": trades,
             "safety": {"authenticated": False, "private_account_accessed": False,
@@ -225,6 +238,21 @@ def main() -> int:
         }
         args.output.write_text(json.dumps(payload, indent=2), encoding="utf-8")
         print(f"PHASE 1I COMPLETE: {len(result.trades)} trades; report={args.output}")
+        print(
+            "SKIPPED LOW FIRST-TARGET R:R: "
+            f"{len(result.skipped_low_first_target_rr)} setup(s)"
+            + (
+                f" (minimum={args.min_first_target_rr}R)"
+                if args.min_first_target_rr is not None else " (filter disabled)"
+            )
+        )
+        for skipped in result.skipped_low_first_target_rr:
+            print(
+                f"  {skipped.signal_time.isoformat()} {skipped.setup} {skipped.direction}: "
+                f"{skipped.first_target_rr:.4f}R < {skipped.minimum_first_target_rr}R; "
+                f"entry={skipped.entry_price} target={skipped.first_target} "
+                f"stop={skipped.stop_price} source={skipped.target_source}"
+            )
         print(json.dumps(payload["summary"], indent=2))
         return 0
     except (MarketDataError, ValueError, OSError, KeyError) as exc:
