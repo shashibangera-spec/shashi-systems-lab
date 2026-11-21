@@ -47,6 +47,8 @@ class BacktestConfig:
     runner_breakeven_min_rr: Decimal | None = None
     min_first_target_rr: Decimal | None = None
     runner_next_amt_target: bool = False
+    pullback_entry: bool = False
+    pullback_limit_bars: int = 3
 
     def __post_init__(self) -> None:
         if not self.row_size.is_finite() or self.row_size <= 0:
@@ -75,6 +77,8 @@ class BacktestConfig:
             raise ValueError("min_first_target_rr must be a positive finite Decimal when supplied")
         if self.runner_next_amt_target and not self.runner_breakeven:
             raise ValueError("runner_next_amt_target requires runner_breakeven=True")
+        if self.pullback_limit_bars < 1:
+            raise ValueError("pullback_limit_bars must be at least one")
 
 
 @dataclass(frozen=True, slots=True)
@@ -147,6 +151,12 @@ class BacktestResult:
     skipped_no_reference: int
     skipped_invalid_stop: int
     skipped_low_first_target_rr: tuple[SkippedFirstTargetRR, ...]
+    pullback_orders_placed: int = 0
+    pullback_orders_filled: int = 0
+    pullback_orders_expired: int = 0
+    pullback_orders_invalidated: int = 0
+    pullback_orders_rejected_low_rr: int = 0
+    pullback_orders_unfilled_at_end: int = 0
 
 
 def session_date_for(candle: Candle) -> date:
@@ -322,11 +332,15 @@ def _signal_at(candles: Sequence[Candle], index: int, profiles: dict[date, Sessi
     if setup is None or direction is None or level is None or index + 1 >= len(candles):
         return None, False
     entry = candles[index + 1].open
-    target = _target(direction, entry, history)
+    stop = _initial_stop(candle, direction, atr, instrument, config)
+    is_pullback_setup = config.pullback_entry and setup == "A_FAILED_AUCTION"
+    target_reference_price = level if is_pullback_setup else entry
+    target = _target(direction, target_reference_price, history)
     if target is None:
         return None, True
-    stop = _initial_stop(candle, direction, atr, instrument, config)
-    if (direction == "long" and stop >= entry) or (direction == "short" and stop <= entry):
+    stop_validation_price = target_reference_price if is_pullback_setup else entry
+    if ((direction == "long" and stop >= stop_validation_price)
+        or (direction == "short" and stop <= stop_validation_price)):
         return None, False
     next_target = _next_target(direction, target[0], history)
     return Signal(index, setup, direction, level, stop, target[0], target[1], atr,
@@ -443,12 +457,104 @@ def run_backtest(candles: Sequence[Candle], instrument: Instrument, fee_schedule
                 if (profile := compute_session_profile(rows, config)) is not None}
 
     active: dict[str, object] | None = None
+    pending: dict[str, object] | None = None
     trades: list[TradeResult] = []
     skipped_no_reference = skipped_invalid_stop = 0
     skipped_low_first_target_rr: list[SkippedFirstTargetRR] = []
+    pullback_orders_placed = pullback_orders_filled = 0
+    pullback_orders_expired = pullback_orders_invalidated = 0
+    pullback_orders_rejected_low_rr = 0
     next_trade_id = 1
 
     for i, candle in enumerate(ordered):
+        # Setup A pullback orders are submitted after the signal candle closes and
+        # may fill only during the next N completed 30m bars. A stop breach wins
+        # over a limit touch on the same OHLC bar (conservative ambiguity handling).
+        if pending is not None and i > int(pending["signal"].index):
+            pending_signal = pending["signal"]
+            assert isinstance(pending_signal, Signal)
+            elapsed_bars = i - pending_signal.index
+            stop_breached = (
+                candle.low <= pending_signal.stop_price if pending_signal.direction == "long"
+                else candle.high >= pending_signal.stop_price
+            )
+            if stop_breached:
+                pullback_orders_invalidated += 1
+                pending = None
+            else:
+                limit_price = pending_signal.thesis_level
+                limit_touched = (
+                    candle.low <= limit_price if pending_signal.direction == "long"
+                    else candle.high >= limit_price
+                )
+                if limit_touched and elapsed_bars <= config.pullback_limit_bars:
+                    improved_open = (
+                        candle.open <= limit_price if pending_signal.direction == "long"
+                        else candle.open >= limit_price
+                    )
+                    fill_price = candle.open if improved_open else limit_price
+                    if ((pending_signal.direction == "long" and fill_price <= pending_signal.stop_price)
+                        or (pending_signal.direction == "short" and fill_price >= pending_signal.stop_price)):
+                        pullback_orders_invalidated += 1
+                        pending = None
+                    else:
+                        history = _profile_history(
+                            profiles, session_date_for(ordered[pending_signal.index]),
+                            config.prior_sessions_for_targets,
+                        )
+                        first_target = _target(pending_signal.direction, fill_price, history)
+                        if first_target is None:
+                            skipped_no_reference += 1
+                            pending = None
+                        else:
+                            next_ref = _next_target(pending_signal.direction, first_target[0], history)
+                            filled_signal = Signal(
+                                pending_signal.index, pending_signal.setup, pending_signal.direction,
+                                pending_signal.thesis_level, pending_signal.stop_price,
+                                first_target[0], first_target[1], pending_signal.atr,
+                                next_ref[0] if next_ref else None,
+                                next_ref[1] if next_ref else None,
+                            )
+                            first_target_rr = (
+                                abs(filled_signal.target_price - fill_price)
+                                / abs(fill_price - filled_signal.stop_price)
+                            )
+                            if (config.min_first_target_rr is not None
+                                and first_target_rr < config.min_first_target_rr):
+                                skipped_low_first_target_rr.append(SkippedFirstTargetRR(
+                                    setup=filled_signal.setup,
+                                    direction=filled_signal.direction,
+                                    signal_candle_start_time=ordered[filled_signal.index].start_time,
+                                    signal_time=ordered[filled_signal.index].end_time,
+                                    entry_time=candle.start_time,
+                                    entry_price=fill_price,
+                                    stop_price=filled_signal.stop_price,
+                                    first_target=filled_signal.target_price,
+                                    target_source=filled_signal.target_source,
+                                    first_target_rr=first_target_rr,
+                                    minimum_first_target_rr=config.min_first_target_rr,
+                                ))
+                                pullback_orders_rejected_low_rr += 1
+                                pending = None
+                            else:
+                                active = {
+                                    "trade_id": next_trade_id, "signal": filled_signal,
+                                    "entry_index": i, "entry_time": candle.start_time,
+                                    "entry_price": fill_price, "stop": filled_signal.stop_price,
+                                    "target": filled_signal.target_price, "partial_time": None,
+                                    "partial_price": None, "pending_exit": None,
+                                    "breakeven_activated": False,
+                                }
+                                next_trade_id += 1
+                                pullback_orders_filled += 1
+                                pending = None
+                                # Do not award Target 1 on the same OHLC bar as an
+                                # intrabar limit fill; its ordering relative to entry is unknown.
+                                continue
+                elif elapsed_bars >= config.pullback_limit_bars:
+                    pullback_orders_expired += 1
+                    pending = None
+
         if active is not None:
             signal = active["signal"]
             assert isinstance(signal, Signal)
@@ -539,6 +645,10 @@ def run_backtest(candles: Sequence[Candle], instrument: Instrument, fee_schedule
             skipped_no_reference += int(no_reference)
             if signal is None:
                 continue
+            if config.pullback_entry and signal.setup == "A_FAILED_AUCTION":
+                pending = {"signal": signal}
+                pullback_orders_placed += 1
+                continue
             entry_candle = ordered[i + 1]
             entry_price = entry_candle.open
             if (signal.direction == "long" and entry_price <= signal.stop_price) or (
@@ -584,6 +694,12 @@ def run_backtest(candles: Sequence[Candle], instrument: Instrument, fee_schedule
             active["partial_price"], last.end_time, last.close, "END_OF_DATA",
             config, instrument, fee_schedule, accounting_policy, funding_events, metadata_source,
         ))
-    return BacktestResult(tuple(profiles[key] for key in sorted(profiles)), tuple(trades),
-                          len(ordered), skipped_no_reference, skipped_invalid_stop,
-                          tuple(skipped_low_first_target_rr))
+    pullback_orders_unfilled_at_end = int(pending is not None)
+    return BacktestResult(
+        tuple(profiles[key] for key in sorted(profiles)), tuple(trades),
+        len(ordered), skipped_no_reference, skipped_invalid_stop,
+        tuple(skipped_low_first_target_rr),
+        pullback_orders_placed, pullback_orders_filled, pullback_orders_expired,
+        pullback_orders_invalidated, pullback_orders_rejected_low_rr,
+        pullback_orders_unfilled_at_end,
+    )
