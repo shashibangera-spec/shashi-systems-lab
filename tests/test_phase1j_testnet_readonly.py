@@ -26,6 +26,7 @@ def test_client_has_only_fixed_get_methods():
 
 def test_base_url_is_exact_india_testnet_and_not_production_or_global():
     assert BASE_URL == "https://cdn-ind.testnet.deltaex.org"
+    assert PRODUCT_PATH == "/v2/products/BTCUSD"
     assert "api.india.delta.exchange" not in BASE_URL
     assert "testnet-api.delta.exchange" not in BASE_URL
 
