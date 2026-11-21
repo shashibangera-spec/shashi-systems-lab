@@ -317,10 +317,13 @@ class DurableSafetyStore:
                              "reason": reason, "net_pnl_usd": str(net) if net is not None else None},
                         )
                 else:
+                    current = conn.execute(
+                        "SELECT latched FROM session_risk WHERE session_id=?", (session_id,)
+                    ).fetchone()
                     self._append_audit_tx(
                         conn, "DAILY_LOSS_EVALUATED",
                         {"session_id": session_id, "limit_usd": "2.50",
-                         "net_pnl_usd": str(net), "latched": False},
+                         "net_pnl_usd": str(net), "latched": bool(current["latched"])},
                     )
                 row = conn.execute(
                     "SELECT * FROM session_risk WHERE session_id=?", (session_id,)
