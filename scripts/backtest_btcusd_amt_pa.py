@@ -152,6 +152,10 @@ def main() -> int:
         "--pullback-maker-entry", action="store_true",
         help="charge maker fee only for resting Setup A pullback fills at the limit; gap-through opening fills and all exits remain taker",
     )
+    parser.add_argument(
+        "--pullback-require-tick-through", action="store_true",
+        help="require a resting Setup A limit to trade at least one instrument tick beyond its price before filling; a touch alone does not fill",
+    )
     args = parser.parse_args()
 
     try:
@@ -212,6 +216,7 @@ def main() -> int:
                 pullback_entry=args.pullback_entry,
                 pullback_limit_bars=args.pullback_limit_bars,
                 pullback_maker_entry=args.pullback_maker_entry,
+                pullback_require_tick_through=args.pullback_require_tick_through,
             ),
             metadata_source="Delta India public product verifier",
         )
@@ -242,6 +247,11 @@ def main() -> int:
                 "exit_liquidity": "taker", "non_pullback_entry_liquidity": "taker",
                 "pullback_resting_limit_entry_liquidity": ("maker" if args.pullback_maker_entry else "taker"),
                 "pullback_maker_entry_enabled": args.pullback_maker_entry,
+                "pullback_require_tick_through_enabled": args.pullback_require_tick_through,
+                "pullback_fill_rule": (
+                    "resting limit fills only after price trades at least one $0.50 tick through; mere touch is not a fill"
+                    if args.pullback_require_tick_through else "legacy touch-based fill rule"
+                ),
                 "pullback_entry_fee_rule": ("resting limit fills=maker; gap-through opening fills=taker; Setup B next-open=taker" if args.pullback_maker_entry else "all entries taker"),
                 "maker_fee": "0.0002",
                 "taker_fee": "0.0005", "gst_on_fee": "0.18",
@@ -265,9 +275,12 @@ def main() -> int:
                 "pullback_entry_enabled": args.pullback_entry,
                 "pullback_limit_bars": args.pullback_limit_bars,
                 "pullback_entry_rule": (
-                    "Setup A only: submit after signal close at original prior-session VAL for longs or VAH for shorts; "
-                    "fill on first touch within next N completed 30m candles, at open if price gaps through the limit otherwise at limit; "
-                    "cancel if initial ATR stop is breached before fill; no chase; do not evaluate Target 1 on fill candle"
+                    "Setup A only: screen minimum first-target R:R at signal close using the resting limit, initial ATR stop and nearest completed prior-session AMT target; "
+                    "reject before placing an order; then submit at original prior-session VAL for longs or VAH for shorts; "
+                    "if enabled, require at least one $0.50 tick trade-through (mere touch is not a fill); "
+                    "gap-through opening fills use the better opening price and taker fees; resting fills use limit price and maker fees when enabled; "
+                    "cancel if initial ATR stop is breached before fill; no chase; Target 1 is not evaluated on the fill candle; "
+                    "Target 1 and next AMT runner reference remain those fixed at signal close"
                 ),
             },
             "pullback_order_counts": {
@@ -276,6 +289,7 @@ def main() -> int:
                 "filled_at_resting_limit": result.pullback_orders_filled_at_limit,
                 "filled_gap_through_at_open": result.pullback_orders_gap_through,
                 "accepted_for_trade": result.pullback_orders_accepted,
+                "rejected_low_first_target_rr_before_order_placement": result.pullback_orders_rejected_low_rr_before_placement,
                 "rejected_no_eligible_target_after_fill": result.pullback_orders_rejected_no_reference,
                 "expired_unfilled": result.pullback_orders_expired,
                 "cancelled_stop_breach_before_fill": result.pullback_orders_invalidated,
@@ -284,6 +298,8 @@ def main() -> int:
                 "reconciliation": {
                     "placed_equals_filled_plus_expired_plus_cancelled_plus_pending": result.pullback_orders_placed == (result.pullback_orders_filled + result.pullback_orders_expired + result.pullback_orders_invalidated + result.pullback_orders_unfilled_at_end),
                     "filled_equals_accepted_plus_post_fill_rejections": result.pullback_orders_filled == (result.pullback_orders_accepted + result.pullback_orders_rejected_low_rr + result.pullback_orders_rejected_no_reference),
+                    "no_post_fill_min_rr_rejections": result.pullback_orders_rejected_low_rr == 0,
+                    "all_fills_accepted": result.pullback_orders_filled == result.pullback_orders_accepted,
                     "filled_equals_limit_fills_plus_gap_through_fills": result.pullback_orders_filled == (result.pullback_orders_filled_at_limit + result.pullback_orders_gap_through),
                 },
             },
