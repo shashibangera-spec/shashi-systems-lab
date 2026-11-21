@@ -124,17 +124,19 @@ Signal Provider -> Risk Gate -> Order Manager -> Demo Adapter
 - No exchange account access, margin, leverage, liquidation, sizing, persistence, or order execution.
 - Specification: `docs/PHASE1E_ACCOUNTING_SIMULATOR_SPEC.md`; acceptance plan: `docs/PHASE1E_ACCEPTANCE_TESTS.md`.
 
-### 1F — Local append-only recorder, feed health and REST gap recovery — IMPLEMENTED ON PR
+### 1F — Local append-only recorder, feed health and REST gap recovery — CLOSED
 - Append public BTCUSD 30m WebSocket updates and canonical completed candles to local JSONL without rewriting existing history.
 - Record CONNECTED, STALE and DISCONNECTED feed-health transitions.
 - On rollover/reconnect, recover only missing, UTC-aligned completed intervals from public REST; report any unresolved intervals.
 - Local output under `data/` is git-ignored. No database, account credentials, private endpoints or order routes.
 - Specification: `docs/PHASE1F_RECORDER_SPEC.md`; acceptance plan: `docs/PHASE1F_ACCEPTANCE_TESTS.md`.
 
-### 1G — Historical dataset validation and replay — PROPOSED
-- Validate multi-day recorded datasets, restart boundaries, missing intervals and REST/WebSocket provenance.
-- Add deterministic replay for research and diagnostics only.
-- Requires a separate implementation review and approval.
+### 1G — Historical JSONL integrity, recovery validation and data-quality reporting — UNDER REVIEW
+- Audit JSONL structure, candle provenance, UTC alignment, duplicate/out-of-order starts and missing intervals without modifying source history.
+- Validate bounded public REST gap responses read-only and report unresolved intervals; actual append-only recovery remains the Phase 1F function.
+- Verify restart byte preservation, restored deduplication and append continuity.
+- Produce JSON and Markdown quality reports; no strategy replay or execution is included.
+- Specification: `docs/PHASE1G_HISTORY_INTEGRITY_SPEC.md`; acceptance plan: `docs/PHASE1G_ACCEPTANCE_TESTS.md`.
 
 ### 1H — Demo execution — NOT AUTHORIZED
 - No demo order path is included in the current authorization.
