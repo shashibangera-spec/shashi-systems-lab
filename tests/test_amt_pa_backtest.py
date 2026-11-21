@@ -395,7 +395,7 @@ def test_next_amt_target_selects_nearest_completed_level_strictly_beyond_first_t
         SessionProfile(date(2026, 11, 20), Decimal("61200"), Decimal("60800"), Decimal("60000"), 100, 48),
         SessionProfile(date(2026, 11, 19), Decimal("61500"), Decimal("61000"), Decimal("60500"), 100, 48),
     ]
-    assert _next_target("long", Decimal("60800"), history) == (Decimal("61000"), "2026-11-19_VAL")
+    assert _next_target("long", Decimal("60800"), history) == (Decimal("61000"), "2026-11-19_POC")
     assert _next_target("short", Decimal("60500"), history) == (Decimal("60000"), "2026-11-20_VAL")
     assert _next_target("long", Decimal("61200"), history) is None
 
@@ -413,7 +413,7 @@ def test_runner_next_amt_target_closes_runner_after_partial_confirmation(monkeyp
     trade, _ = _run_with_injected_signal(
         monkeypatch, partial_bar, [runner_bar],
         BacktestConfig(runner_breakeven=True, runner_next_amt_target=True),
-        next_target_price=Decimal("60100"),
+        next_target_price=Decimal("60100"), stop_price=Decimal("59900"),
     )
     assert trade.partial_exit_time == partial_bar.end_time
     assert trade.final_exit_time == runner_bar.end_time
