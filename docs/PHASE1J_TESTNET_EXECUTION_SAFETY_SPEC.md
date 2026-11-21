@@ -1,6 +1,6 @@
 # Phase 1J — Delta Exchange India Testnet Execution Safety Specification
 
-**Status:** Approved safety specification; mock-only CI passed; durable local persistence added; Testnet connectivity blocked pending endpoint and credential-boundary confirmation  
+**Status:** Approved safety specification; mock-only and durable persistence CI passed; fixed GET-only India Testnet client implemented; local credentialed connectivity validation pending  
 **Phase:** 1J  
 **Branch:** `phase1j-testnet-execution-spec`  
 **Base:** `main` at Phase 1I merge commit `842c5e25b7335ff84af279d611b73c0e74c95911`  
@@ -29,16 +29,16 @@ No order route may be connected until this specification is reviewed, unresolved
 
 The only permitted exchange API origin for any future Phase 1J execution component is:
 
-`https://testnet-api.delta.exchange`
+`https://cdn-ind.testnet.deltaex.org`
 
 The host must be an exact allowlist match. Validate the parsed URL scheme, hostname, port, and absence of user-info before every request. HTTPS is mandatory.
 
 ### 2.2 Production hard block
 
-The production India API origin `https://api.india.delta.exchange` is explicitly forbidden.
+The production India API origin `https://api.india.delta.exchange` and Global Testnet origin `https://testnet-api.delta.exchange` are explicitly forbidden.
 
 The execution process must fail closed if:
-- the configured host is anything other than `testnet-api.delta.exchange`;
+- the configured host is anything other than `cdn-ind.testnet.deltaex.org`;
 - the resolved request URL, redirect target, proxy target, or API response origin indicates production;
 - a production hostname appears in any execution configuration;
 - environment identity cannot be established unambiguously.
@@ -264,7 +264,7 @@ The following must be explicitly settled before any order route can be connected
 10. **Funding/fee accounting:** verify the Testnet event sources and currencies for actual fees/funding; do not infer missing values.
 11. **Session shutdown:** define handling of open positions and orders at 05:30 IST; no automatic liquidation assumption is made.
 
-The daily-loss decision is resolved as above. Most Section 11 blockers remain unresolved and continue to prohibit order routes. Durable local persistence has now been added as a standalone offline component, but it has not yet been exercised against the user's Windows environment. Read-only Testnet connectivity remains blocked by the endpoint correction and account-key permission decision. No exchange client is currently implemented.
+The daily-loss decision and India Testnet endpoint are resolved as above. A fixed-operation GET-only client and read-only snapshot script are implemented; local credentialed validation and the exact account-read permission are pending. The client exposes only product metadata, positions, open orders, fills and wallet-balance GET operations; it has no arbitrary method/path interface, redirect following, order/cancel/amend methods, or production/global host support. All order-route blockers remain unresolved and prohibit execution.
 
 ## 12. Acceptance gates before first Testnet order
 
@@ -272,7 +272,7 @@ The first Testnet order remains prohibited until all gates pass:
 
 - [x] This specification reviewed and approved.
 - [ ] All Section 11 blockers resolved in writing.
-- [ ] Exact Testnet hostname allowlist and production-host negative tests pass.
+- [x] Exact India Testnet hostname allowlist is fixed in the read-only client; production and Global Testnet origins are excluded.
 - [ ] Correct India Testnet hostname confirmed and exact-origin negative tests pass.\n- [ ] Testnet-only credential isolation and the minimum available account-read permission verified without exposing secrets.
 - [ ] 2-lot aggregate exposure cap tested across positions plus working orders.
 - [ ] Daily loss kill-switch tested at, below and above the USD 2.50 threshold, including durable restart persistence (mock tests cover latch behavior; production-grade persistence remains unimplemented).
@@ -288,4 +288,4 @@ Passing these gates does not authorize production access. Production API host, p
 
 ## 13. Phase boundary
 
-Phase 1J begins with this written safety specification only. The mock-only state machine has passed user-reported Windows tests and GitHub Actions CI. Durable local persistence is now implemented offline and requires Windows validation. A strictly GET-only India Testnet account/position check may be built only after the endpoint and account-key permission questions in Section 11 are confirmed. No order route or order submission is authorized. No production route will be implemented in Phase 1J.
+Phase 1J begins with this written safety specification only. The mock-only state machine and durable local persistence are implemented. A strictly GET-only India Testnet client and local reconciliation snapshot script are implemented; the user must validate them locally with a separate Demo/Testnet key. No order route or order submission is authorized. No production route will be implemented in Phase 1J.
