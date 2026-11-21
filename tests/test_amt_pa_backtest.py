@@ -258,7 +258,7 @@ def test_runner_breakeven_rr_gate_does_not_activate_below_one_r(monkeypatch):
     )
     next_bar = Candle(
         "BTCUSD", "30m", bars[15].start_time, Decimal("60000"),
-        Decimal("60070"), Decimal("60000"), Decimal("59950"), Decimal("1"),
+        Decimal("60070"), Decimal("59950"), Decimal("59950"), Decimal("1"),
     )
     trade, _ = _run_with_injected_signal(
         monkeypatch, target_bar, [next_bar],
