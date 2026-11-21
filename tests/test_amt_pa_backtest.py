@@ -4,7 +4,7 @@ from decimal import Decimal
 import pytest
 
 from shashi_engine.amt_pa_backtest import (
-    BacktestConfig, _expected_funding_times, _target,
+    BacktestConfig, Signal, _expected_funding_times, _target,
     compute_session_profile, run_backtest, session_date_for,
 )
 from shashi_engine.accounting import AccountingPolicy, FeeSchedule
@@ -113,3 +113,77 @@ def test_engine_rejects_duplicates_and_out_of_order():
 def test_even_lot_requirement_for_partial():
     with pytest.raises(ValueError, match="even whole number"):
         BacktestConfig(position_lots=1)
+
+
+def _run_with_injected_signal(monkeypatch, entry_bar, following_bars):
+    import shashi_engine.amt_pa_backtest as engine
+
+    bars = session_candles(date(2026, 11, 20))[:17]
+    bars[14] = entry_bar
+    for offset, bar in enumerate(following_bars, start=15):
+        bars[offset] = bar
+    signal_index = 13
+    injected = Signal(
+        signal_index, "A_FAILED_AUCTION", "long", Decimal("59000"),
+        Decimal("59999"), Decimal("60050"), "2026-11-19_POC", Decimal("100"),
+    )
+
+    def fake_signal_at(candles, index, profiles, market_instrument, config):
+        return (injected, False) if index == signal_index else (None, False)
+
+    monkeypatch.setattr(engine, "_signal_at", fake_signal_at)
+    result = run_backtest(
+        bars, instrument(),
+        FeeSchedule(Decimal(".0002"), Decimal(".0005"), Decimal(".18")),
+        AccountingPolicy(timedelta(minutes=10)),
+    )
+    assert len(result.trades) == 1
+    return result.trades[0], bars
+
+
+def test_same_candle_stop_and_target_is_strictly_stop_first(monkeypatch):
+    bars = session_candles(date(2026, 11, 20))
+    entry_bar = Candle(
+        "BTCUSD", "30m", bars[14].start_time, Decimal("60000"),
+        Decimal("60200"), Decimal("59800"), Decimal("60020"), Decimal("1"),
+    )
+    trade, ordered = _run_with_injected_signal(monkeypatch, entry_bar, [])
+    assert trade.partial_exit_time is None
+    assert trade.partial_exit_price is None
+    assert trade.final_exit_reason == "INITIAL_PROTECTIVE_STOP"
+    assert trade.final_exit_price == Decimal("59999")
+    assert trade.partial_lots == 0
+    assert trade.runner_lots == 2
+
+
+def test_signal_close_and_next_open_are_explicit_and_no_lookahead(monkeypatch):
+    bars = session_candles(date(2026, 11, 20))
+    entry_bar = Candle(
+        "BTCUSD", "30m", bars[14].start_time, Decimal("60000"),
+        Decimal("60060"), Decimal("59960"), Decimal("60010"), Decimal("1"),
+    )
+    trade, ordered = _run_with_injected_signal(monkeypatch, entry_bar, [])
+    signal_bar = ordered[13]
+    next_bar = ordered[14]
+    assert trade.signal_candle_start_time == signal_bar.start_time
+    assert trade.signal_time == signal_bar.end_time
+    assert trade.entry_time == next_bar.start_time
+    # A continuous market's signal close and next candle open share the same boundary instant.
+    assert trade.signal_time == trade.entry_time
+    assert trade.entry_price == next_bar.open
+
+
+def test_runner_lots_reports_full_position_without_partial_and_one_after_partial(monkeypatch):
+    bars = session_candles(date(2026, 11, 20))
+    target_only_bar = Candle(
+        "BTCUSD", "30m", bars[14].start_time, Decimal("60000"),
+        Decimal("60100"), Decimal("60000"), Decimal("60080"), Decimal("1"),
+    )
+    stop_bar = Candle(
+        "BTCUSD", "30m", bars[15].start_time, Decimal("60000"),
+        Decimal("60050"), Decimal("59800"), Decimal("59950"), Decimal("1"),
+    )
+    trade, _ = _run_with_injected_signal(monkeypatch, target_only_bar, [stop_bar])
+    assert trade.partial_lots == 1
+    assert trade.runner_lots == 1
+    assert trade.partial_exit_price == Decimal("60050")
