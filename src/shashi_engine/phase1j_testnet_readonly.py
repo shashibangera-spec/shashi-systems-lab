@@ -95,7 +95,7 @@ class DeltaIndiaTestnetReadOnlyClient:
             "User-Agent": USER_AGENT,
         }
         if authenticated:
-            prehash = "GET" + timestamp + path + query
+            prehash = "GET" + timestamp + path + (("?" + query) if query else "")
             signature = hmac.new(
                 self._api_secret, prehash.encode("utf-8"), hashlib.sha256
             ).hexdigest()
@@ -129,7 +129,7 @@ class DeltaIndiaTestnetReadOnlyClient:
         return self._get(POSITIONS_PATH, {"product_id": str(PRODUCT_ID)})
 
     def get_open_orders(self):
-        return self._get(ORDERS_PATH, {"product_ids": str(PRODUCT_ID)})
+        return self._get(ORDERS_PATH, {"product_id": str(PRODUCT_ID), "state": "open"})
 
     def get_fills(self):
         return self._get(FILLS_PATH, {"product_ids": str(PRODUCT_ID)})
