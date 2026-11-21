@@ -17,7 +17,7 @@ from urllib.request import HTTPSHandler, HTTPRedirectHandler, ProxyHandler, Requ
 BASE_URL = "https://cdn-ind.testnet.deltaex.org"
 BLOCKED_HOSTS = frozenset({"api.india.delta.exchange", "testnet-api.delta.exchange"})
 PRODUCT_ID = 27
-PRODUCT_PATH = "/v2/products/27"
+PRODUCT_PATH = "/v2/products/BTCUSD"
 POSITIONS_PATH = "/v2/positions"
 ORDERS_PATH = "/v2/orders"
 FILLS_PATH = "/v2/fills"
