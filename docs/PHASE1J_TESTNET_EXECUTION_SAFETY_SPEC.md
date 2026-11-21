@@ -1,6 +1,6 @@
 # Phase 1J — Delta Exchange India Testnet Execution Safety Specification
 
-**Status:** Approved safety specification; mock-only implementation added; test execution pending  
+**Status:** Approved safety specification; mock-only CI passed; durable local persistence added; Testnet connectivity blocked pending endpoint and credential-boundary confirmation  
 **Phase:** 1J  
 **Branch:** `phase1j-testnet-execution-spec`  
 **Base:** `main` at Phase 1I merge commit `842c5e25b7335ff84af279d611b73c0e74c95911`  
@@ -253,18 +253,18 @@ Never log API keys, signatures, authorization headers, secrets, or raw credentia
 
 The following must be explicitly settled before any order route can be connected:
 
-1. ~~Daily loss limit~~ **Resolved:** USD 2.50 per 05:30 IST–05:30 IST session; include realized and unrealized P&L, subtract fees/charges, and include funding credits/debits. Missing or stale components block entries and latch the mock kill-switch.
-2. **Protective-order semantics:** verify Delta Testnet support for reduce-only stops, stop trigger source, amend/replace guarantees, partial fills, and behavior on disconnect.
-3. **Client-order idempotency:** confirm accepted client ID field, uniqueness scope, queryability and retention after cancellation/fill.
-4. **Testnet account isolation:** verify the Testnet API key is distinct from production and has only required permissions.
-5. **Quantity and precision:** confirm current product metadata for contract value, lot increment, tick size, minimum order size and allowed order types.
-6. **Emergency position policy:** define whether/when to flatten if protective coverage fails, and who authorizes it.
-7. **Audit durability:** choose local/database persistence, backup, retention and tamper-evidence mechanism.
-8. **Operator controls:** define alert channel, acknowledgement, manual reset and kill-switch access.
-9. **Funding/fee accounting:** verify the Testnet event sources and currencies for actual fees/funding; do not infer missing values.
-10. **Session shutdown:** define handling of open positions and orders at 05:30 IST; no automatic liquidation assumption is made.
+1. ~~Daily loss limit~~ **Resolved:** USD 2.50 per 05:30 IST–05:30 IST session; include realized and unrealized P&L, subtract fees/charges, and include funding credits/debits. Missing or stale components block entries and latch the kill-switch. SQLite durable persistence is implemented offline; Windows validation and operational backup/retention remain pending.
+2. **Testnet endpoint and account-key permissions:** confirm the corrected India Testnet origin `https://cdn-ind.testnet.deltaex.org` (the former `testnet-api.delta.exchange` is Global Testnet). Delta documentation currently indicates account/position endpoints require Trading permission; determine whether a separate demo-only key can be used for a strictly GET-only client without exposing production credentials. Do not paste secrets into ChatGPT or commit them.\n3. **Protective-order semantics:** verify Delta Testnet support for reduce-only stops, stop trigger source, amend/replace guarantees, partial fills, and behavior on disconnect.
+4. **Client-order idempotency:** confirm accepted client ID field, uniqueness scope, queryability and retention after cancellation/fill.
+5. **Testnet account isolation:** verify the Testnet API key is distinct from production and has only required permissions.
+6. **Quantity and precision:** confirm current product metadata for contract value, lot increment, tick size, minimum order size and allowed order types.
+7. **Emergency position policy:** define whether/when to flatten if protective coverage fails, and who authorizes it.
+8. **Audit durability:** SQLite local persistence is implemented with WAL/FULL sync, transactional state, append-only triggers and a hash chain. Still decide encrypted backup, retention, and external hash anchoring; a local hash chain alone is not protection against an administrator rewriting the entire database.
+9. **Operator controls:** define alert channel, acknowledgement, manual reset and kill-switch access.
+10. **Funding/fee accounting:** verify the Testnet event sources and currencies for actual fees/funding; do not infer missing values.
+11. **Session shutdown:** define handling of open positions and orders at 05:30 IST; no automatic liquidation assumption is made.
 
-The daily-loss decision is resolved as above. All other Section 11 blockers remain unresolved and continue to prohibit exchange connectivity and order routes. The current implementation is mock-only and in-memory; it is not a durable execution service.
+The daily-loss decision is resolved as above. Most Section 11 blockers remain unresolved and continue to prohibit order routes. Durable local persistence has now been added as a standalone offline component, but it has not yet been exercised against the user's Windows environment. Read-only Testnet connectivity remains blocked by the endpoint correction and account-key permission decision. No exchange client is currently implemented.
 
 ## 12. Acceptance gates before first Testnet order
 
@@ -273,7 +273,7 @@ The first Testnet order remains prohibited until all gates pass:
 - [x] This specification reviewed and approved.
 - [ ] All Section 11 blockers resolved in writing.
 - [ ] Exact Testnet hostname allowlist and production-host negative tests pass.
-- [ ] Testnet-only credential isolation verified without exposing secrets.
+- [ ] Correct India Testnet hostname confirmed and exact-origin negative tests pass.\n- [ ] Testnet-only credential isolation and the minimum available account-read permission verified without exposing secrets.
 - [ ] 2-lot aggregate exposure cap tested across positions plus working orders.
 - [ ] Daily loss kill-switch tested at, below and above the USD 2.50 threshold, including durable restart persistence (mock tests cover latch behavior; production-grade persistence remains unimplemented).
 - [ ] Startup reconciliation tested for flat, open position, open order, orphan fill, stale snapshot and external/manual order.
@@ -288,4 +288,4 @@ Passing these gates does not authorize production access. Production API host, p
 
 ## 13. Phase boundary
 
-Phase 1J begins with this written safety specification only. The next work item is mock-only state-machine and fail-closed safety tests that do not contact the exchange. Only after those are approved may a separately scoped Testnet connectivity step be proposed. No production route will be implemented in Phase 1J.
+Phase 1J begins with this written safety specification only. The mock-only state machine has passed user-reported Windows tests and GitHub Actions CI. Durable local persistence is now implemented offline and requires Windows validation. A strictly GET-only India Testnet account/position check may be built only after the endpoint and account-key permission questions in Section 11 are confirmed. No order route or order submission is authorized. No production route will be implemented in Phase 1J.
