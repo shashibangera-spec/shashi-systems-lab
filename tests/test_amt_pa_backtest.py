@@ -222,6 +222,6 @@ def test_runner_breakeven_activates_only_after_partial_confirmation_on_next_cand
     assert trade.partial_exit_time == target_bar.end_time
     assert trade.partial_exit_price == Decimal("60050")
     assert trade.final_exit_time == next_bar.start_time
-    assert trade.final_exit_reason == "INITIAL_PROTECTIVE_STOP"
+    assert trade.final_exit_reason == "RUNNER_FEE_ADJUSTED_BREAKEVEN"
     assert trade.final_exit_price == expected_stop
     assert trade.final_exit_price > trade.entry_price
