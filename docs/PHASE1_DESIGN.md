@@ -88,7 +88,7 @@ Signal Provider -> Risk Gate -> Order Manager -> Demo Adapter
 2. **Market-data adapter** — public ticker, mark price, trades, order book, funding and candle data. Reconnect safely and detect stale or missing data.
 3. **Domain models** — typed representations for instrument metadata, ticker, order-book levels, trades, funding observations and candles.
 4. **Data-quality layer** — timestamp sanity, sequence/gap checks where available, numeric validation and stale-feed detection.
-5. **Local recorder** — structured local logs for diagnostics. No production database integration in Phase 1.
+5. **Local recorder** — append-only JSONL records for public feed diagnostics and candle history. Local output is git-ignored; no production database integration.
 6. **Future risk/order interfaces** — design only; no order submission implementation.
 
 ## Milestones and acceptance gates
@@ -118,8 +118,27 @@ Signal Provider -> Risk Gate -> Order Manager -> Demo Adapter
 - Process-local duplicate ID registry only; no persistence or execution adapter.
 - An approved decision means research-only review, never permission to place an order.
 
-### 1E — Demo execution
-Not included in the current authorization. Requires separate explicit approval after review of 1A–1D. Demo credentials, if later needed, must be isolated from live credentials.
+### 1E — Non-executing accounting simulator — CLOSED
+- Implemented pure Decimal BTCUSD scenario accounting, maker/taker fees and GST assumptions, conditional settlement fee, funding cash flows and optional timestamped USD/INR display equivalents.
+- Integrated the existing RiskGate through an explicitly USD-only adapter.
+- No exchange account access, margin, leverage, liquidation, sizing, persistence, or order execution.
+- Specification: `docs/PHASE1E_ACCOUNTING_SIMULATOR_SPEC.md`; acceptance plan: `docs/PHASE1E_ACCEPTANCE_TESTS.md`.
+
+### 1F — Local append-only recorder, feed health and REST gap recovery — IMPLEMENTED ON PR
+- Append public BTCUSD 30m WebSocket updates and canonical completed candles to local JSONL without rewriting existing history.
+- Record CONNECTED, STALE and DISCONNECTED feed-health transitions.
+- On rollover/reconnect, recover only missing, UTC-aligned completed intervals from public REST; report any unresolved intervals.
+- Local output under `data/` is git-ignored. No database, account credentials, private endpoints or order routes.
+- Specification: `docs/PHASE1F_RECORDER_SPEC.md`; acceptance plan: `docs/PHASE1F_ACCEPTANCE_TESTS.md`.
+
+### 1G — Historical dataset validation and replay — PROPOSED
+- Validate multi-day recorded datasets, restart boundaries, missing intervals and REST/WebSocket provenance.
+- Add deterministic replay for research and diagnostics only.
+- Requires a separate implementation review and approval.
+
+### 1H — Demo execution — NOT AUTHORIZED
+- No demo order path is included in the current authorization.
+- Any future demo integration requires fresh official endpoint/credential verification, an isolated demo-only adapter, a fail-closed kill switch and separate explicit approval.
 
 ## Endpoint notes
 
