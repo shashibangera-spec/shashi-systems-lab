@@ -44,6 +44,7 @@ class BacktestConfig:
     stop_pad_ticks: int = 1
     runner_breakeven: bool = False
     runner_breakeven_min_rr: Decimal | None = None
+    min_first_target_rr: Decimal | None = None
 
     def __post_init__(self) -> None:
         if not self.row_size.is_finite() or self.row_size <= 0:
@@ -64,6 +65,10 @@ class BacktestConfig:
             not self.runner_breakeven_min_rr.is_finite() or self.runner_breakeven_min_rr <= 0
         ):
             raise ValueError("runner_breakeven_min_rr must be a positive finite Decimal when supplied")
+        if self.min_first_target_rr is not None and (
+            not self.min_first_target_rr.is_finite() or self.min_first_target_rr <= 0
+        ):
+            raise ValueError("min_first_target_rr must be a positive finite Decimal when supplied")
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,12 +114,28 @@ class TradeResult:
 
 
 @dataclass(frozen=True, slots=True)
+class SkippedFirstTargetRR:
+    setup: Setup
+    direction: Direction
+    signal_candle_start_time: datetime
+    signal_time: datetime
+    entry_time: datetime
+    entry_price: Decimal
+    stop_price: Decimal
+    first_target: Decimal
+    target_source: str
+    first_target_rr: Decimal
+    minimum_first_target_rr: Decimal
+
+
+@dataclass(frozen=True, slots=True)
 class BacktestResult:
     profiles: tuple[SessionProfile, ...]
     trades: tuple[TradeResult, ...]
     candles_used: int
     skipped_no_reference: int
     skipped_invalid_stop: int
+    skipped_low_first_target_rr: tuple[SkippedFirstTargetRR, ...]
 
 
 def session_date_for(candle: Candle) -> date:
@@ -377,6 +398,7 @@ def run_backtest(candles: Sequence[Candle], instrument: Instrument, fee_schedule
     active: dict[str, object] | None = None
     trades: list[TradeResult] = []
     skipped_no_reference = skipped_invalid_stop = 0
+    skipped_low_first_target_rr: list[SkippedFirstTargetRR] = []
     next_trade_id = 1
 
     for i, candle in enumerate(ordered):
@@ -460,6 +482,25 @@ def run_backtest(candles: Sequence[Candle], instrument: Instrument, fee_schedule
             ):
                 skipped_invalid_stop += 1
                 continue
+            if config.min_first_target_rr is not None:
+                first_target_rr = (
+                    abs(signal.target_price - entry_price) / abs(entry_price - signal.stop_price)
+                )
+                if first_target_rr < config.min_first_target_rr:
+                    skipped_low_first_target_rr.append(SkippedFirstTargetRR(
+                        setup=signal.setup,
+                        direction=signal.direction,
+                        signal_candle_start_time=ordered[signal.index].start_time,
+                        signal_time=ordered[signal.index].end_time,
+                        entry_time=entry_candle.start_time,
+                        entry_price=entry_price,
+                        stop_price=signal.stop_price,
+                        first_target=signal.target_price,
+                        target_source=signal.target_source,
+                        first_target_rr=first_target_rr,
+                        minimum_first_target_rr=config.min_first_target_rr,
+                    ))
+                    continue
             active = {
                 "trade_id": next_trade_id, "signal": signal, "entry_index": i + 1,
                 "entry_time": entry_candle.start_time, "entry_price": entry_price,
@@ -480,4 +521,5 @@ def run_backtest(candles: Sequence[Candle], instrument: Instrument, fee_schedule
             config, instrument, fee_schedule, accounting_policy, funding_events, metadata_source,
         ))
     return BacktestResult(tuple(profiles[key] for key in sorted(profiles)), tuple(trades),
-                          len(ordered), skipped_no_reference, skipped_invalid_stop)
+                          len(ordered), skipped_no_reference, skipped_invalid_stop,
+                          tuple(skipped_low_first_target_rr))
