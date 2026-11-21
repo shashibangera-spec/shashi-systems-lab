@@ -180,6 +180,10 @@ def measure_trade(trade: Any, candles: list[Candle], index_by_time: dict[datetim
             (favorable_excursion(trade.direction, trade.entry_price, bar) for bar in post_bars),
             default=Decimal(0),
         )
+        post_mae = max(
+            (adverse_excursion(trade.direction, trade.entry_price, bar) for bar in post_bars),
+            default=Decimal(0),
+        )
         target_idx = next((
             i for i, bar in enumerate(post_bars)
             if (bar.high >= trade.first_target if trade.direction == "long"
@@ -187,6 +191,8 @@ def measure_trade(trade: Any, candles: list[Candle], index_by_time: dict[datetim
         ), None)
         row.update({
             "post_stop_candle_count_observed": len(post_bars),
+            "post_stop_mae_points_from_original_entry": str(post_mae),
+            "post_stop_mae_atr": str(post_mae / atr),
             "post_stop_mfe_points_from_original_entry": str(post_mfe),
             "post_stop_mfe_atr": str(post_mfe / atr),
             "post_stop_mfe_first_target_fraction": (
@@ -213,6 +219,8 @@ def measure_trade(trade: Any, candles: list[Candle], index_by_time: dict[datetim
     else:
         row.update({
             "post_stop_candle_count_observed": None,
+            "post_stop_mae_points_from_original_entry": None,
+            "post_stop_mae_atr": None,
             "post_stop_mfe_points_from_original_entry": None,
             "post_stop_mfe_atr": None,
             "post_stop_mfe_first_target_fraction": None,
@@ -320,7 +328,7 @@ def main() -> int:
                 "mae": "Maximum adverse entry-to-OHLC excursion from entry candle through exit candle, inclusive",
                 "mfe": "Maximum favorable entry-to-OHLC excursion from entry candle through exit candle, inclusive",
                 "stop_breach": "Worst OHLC extreme beyond the initial protective stop on the stop-out candle",
-                "post_stop": "Candles strictly after the stop-out candle through the end of the fixed window; separately records the first subsequent original-target touch",
+                "post_stop": "For stopped trades, MAE and MFE are measured from original entry over candles strictly after the stop-out candle through the end of the fixed window; first subsequent original-target touch is separately timestamped",
                 "atr": "14-period simple mean true range at the signal candle, matching the strategy's signal-time ATR convention",
                 "intrabar_limitation": "OHLC cannot determine whether stop or target occurred first inside a candle; the stop-out candle is excluded from post-stop recovery credit",
             },
