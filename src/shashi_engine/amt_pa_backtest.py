@@ -49,6 +49,7 @@ class BacktestConfig:
     runner_next_amt_target: bool = False
     pullback_entry: bool = False
     pullback_limit_bars: int = 3
+    pullback_maker_entry: bool = False
 
     def __post_init__(self) -> None:
         if not self.row_size.is_finite() or self.row_size <= 0:
@@ -104,6 +105,7 @@ class TradeResult:
     signal_time: datetime
     entry_time: datetime
     entry_price: Decimal
+    entry_liquidity: Literal["maker", "taker"]
     thesis_level: Decimal
     stop_price: Decimal
     first_target: Decimal
@@ -153,9 +155,13 @@ class BacktestResult:
     skipped_low_first_target_rr: tuple[SkippedFirstTargetRR, ...]
     pullback_orders_placed: int = 0
     pullback_orders_filled: int = 0
+    pullback_orders_filled_at_limit: int = 0
+    pullback_orders_gap_through: int = 0
+    pullback_orders_accepted: int = 0
     pullback_orders_expired: int = 0
     pullback_orders_invalidated: int = 0
     pullback_orders_rejected_low_rr: int = 0
+    pullback_orders_rejected_no_reference: int = 0
     pullback_orders_unfilled_at_end: int = 0
 
 
@@ -383,7 +389,7 @@ def _funding_for(source: Sequence[FundingEvent], start: datetime, end: datetime,
 
 def _close_trade(trade_id: int, signal: Signal, signal_candle_start_time: datetime,
                  signal_time: datetime, entry_time: datetime, entry_price: Decimal,
-                 partial_time: datetime | None, partial_price: Decimal | None,
+                 entry_liquidity: Literal["maker", "taker"], partial_time: datetime | None, partial_price: Decimal | None,
                  final_time: datetime, final_price: Decimal, reason: str,
                  config: BacktestConfig, instrument: Instrument, fee_schedule: FeeSchedule,
                  policy: AccountingPolicy, funding: Sequence[FundingEvent],
@@ -403,7 +409,7 @@ def _close_trade(trade_id: int, signal: Signal, signal_candle_start_time: dateti
         breakdown = calculate_accounting(AccountingScenario(
             instrument=instrument, scenario_id=f"phase1i-{trade_id}-tranche-{idx + 1}",
             contract_metadata_source=metadata_source, lots=tranche,
-            position_side=signal.direction, entry_price=entry_price, entry_liquidity="taker",
+            position_side=signal.direction, entry_price=entry_price, entry_liquidity=entry_liquidity,
             entry_at=entry_time, fee_schedule=fee_schedule, policy=policy, as_of=exit_time,
             exit_price=exit_price, exit_liquidity="taker", exit_at=exit_time,
             funding_events=events,
@@ -415,7 +421,7 @@ def _close_trade(trade_id: int, signal: Signal, signal_candle_start_time: dateti
     complete = not missing and all_complete
     return TradeResult(
         trade_id, signal.setup, signal.direction, signal_candle_start_time, signal_time, entry_time, entry_price,
-        signal.thesis_level, signal.stop_price, signal.target_price, signal.target_source,
+        entry_liquidity, signal.thesis_level, signal.stop_price, signal.target_price, signal.target_source,
         partial_time, partial_price, final_time, final_price, reason,
         config.position_lots, tranche if partial_time else 0,
         config.position_lots - (tranche if partial_time else 0),
@@ -462,8 +468,10 @@ def run_backtest(candles: Sequence[Candle], instrument: Instrument, fee_schedule
     skipped_no_reference = skipped_invalid_stop = 0
     skipped_low_first_target_rr: list[SkippedFirstTargetRR] = []
     pullback_orders_placed = pullback_orders_filled = 0
+    pullback_orders_filled_at_limit = pullback_orders_gap_through = 0
+    pullback_orders_accepted = 0
     pullback_orders_expired = pullback_orders_invalidated = 0
-    pullback_orders_rejected_low_rr = 0
+    pullback_orders_rejected_low_rr = pullback_orders_rejected_no_reference = 0
     next_trade_id = 1
 
     for i, candle in enumerate(ordered):
@@ -498,6 +506,13 @@ def run_backtest(candles: Sequence[Candle], instrument: Instrument, fee_schedule
                         pullback_orders_invalidated += 1
                         pending = None
                     else:
+                        pullback_orders_filled += 1
+                        if improved_open:
+                            pullback_orders_gap_through += 1
+                            entry_liquidity = "taker"
+                        else:
+                            pullback_orders_filled_at_limit += 1
+                            entry_liquidity = "maker" if config.pullback_maker_entry else "taker"
                         history = _profile_history(
                             profiles, session_date_for(ordered[pending_signal.index]),
                             config.prior_sessions_for_targets,
@@ -505,6 +520,7 @@ def run_backtest(candles: Sequence[Candle], instrument: Instrument, fee_schedule
                         first_target = _target(pending_signal.direction, fill_price, history)
                         if first_target is None:
                             skipped_no_reference += 1
+                            pullback_orders_rejected_no_reference += 1
                             pending = None
                         else:
                             next_ref = _next_target(pending_signal.direction, first_target[0], history)
@@ -540,13 +556,14 @@ def run_backtest(candles: Sequence[Candle], instrument: Instrument, fee_schedule
                                 active = {
                                     "trade_id": next_trade_id, "signal": filled_signal,
                                     "entry_index": i, "entry_time": candle.start_time,
-                                    "entry_price": fill_price, "stop": filled_signal.stop_price,
+                                    "entry_price": fill_price, "entry_liquidity": entry_liquidity,
+                                    "stop": filled_signal.stop_price,
                                     "target": filled_signal.target_price, "partial_time": None,
                                     "partial_price": None, "pending_exit": None,
                                     "breakeven_activated": False,
                                 }
                                 next_trade_id += 1
-                                pullback_orders_filled += 1
+                                pullback_orders_accepted += 1
                                 pending = None
                                 # Do not award Target 1 on the same OHLC bar as an
                                 # intrabar limit fill; its ordering relative to entry is unknown.
@@ -565,7 +582,7 @@ def run_backtest(candles: Sequence[Candle], instrument: Instrument, fee_schedule
             if active["pending_exit"]:
                 trades.append(_close_trade(
                     int(active["trade_id"]), signal, ordered[signal.index].start_time,
-                    ordered[signal.index].end_time, active["entry_time"], active["entry_price"], active["partial_time"],
+                    ordered[signal.index].end_time, active["entry_time"], active["entry_price"], active["entry_liquidity"], active["partial_time"],
                     active["partial_price"], candle.start_time, candle.open,
                     str(active["pending_exit"]), config, instrument, fee_schedule,
                     accounting_policy, funding_events, metadata_source,
@@ -597,7 +614,7 @@ def run_backtest(candles: Sequence[Candle], instrument: Instrument, fee_schedule
             if stop_hit:
                 trades.append(_close_trade(
                     int(active["trade_id"]), signal, ordered[signal.index].start_time,
-                    ordered[signal.index].end_time, active["entry_time"], active["entry_price"], active["partial_time"],
+                    ordered[signal.index].end_time, active["entry_time"], active["entry_price"], active["entry_liquidity"], active["partial_time"],
                     active["partial_price"], candle.start_time, active["stop"],
                     ("RUNNER_FEE_ADJUSTED_BREAKEVEN" if active["breakeven_activated"]
                      else "INITIAL_PROTECTIVE_STOP"), config, instrument, fee_schedule,
@@ -615,7 +632,7 @@ def run_backtest(candles: Sequence[Candle], instrument: Instrument, fee_schedule
                 if runner_target_hit:
                     trades.append(_close_trade(
                         int(active["trade_id"]), signal, ordered[signal.index].start_time,
-                        ordered[signal.index].end_time, active["entry_time"], active["entry_price"],
+                        ordered[signal.index].end_time, active["entry_time"], active["entry_price"], active["entry_liquidity"],
                         active["partial_time"], active["partial_price"], candle.end_time,
                         signal.next_target_price, "RUNNER_NEXT_AMT_TARGET", config, instrument,
                         fee_schedule, accounting_policy, funding_events, metadata_source,
@@ -682,7 +699,7 @@ def run_backtest(candles: Sequence[Candle], instrument: Instrument, fee_schedule
             active = {
                 "trade_id": next_trade_id, "signal": signal, "entry_index": i + 1,
                 "entry_time": entry_candle.start_time, "entry_price": entry_price,
-                "stop": signal.stop_price, "target": signal.target_price,
+                "entry_liquidity": "taker", "stop": signal.stop_price, "target": signal.target_price,
                 "partial_time": None, "partial_price": None, "pending_exit": None,
                 "breakeven_activated": False,
             }
@@ -694,7 +711,7 @@ def run_backtest(candles: Sequence[Candle], instrument: Instrument, fee_schedule
         last = ordered[-1]
         trades.append(_close_trade(
             int(active["trade_id"]), signal, ordered[signal.index].start_time,
-            ordered[signal.index].end_time, active["entry_time"], active["entry_price"], active["partial_time"],
+            ordered[signal.index].end_time, active["entry_time"], active["entry_price"], active["entry_liquidity"], active["partial_time"],
             active["partial_price"], last.end_time, last.close, "END_OF_DATA",
             config, instrument, fee_schedule, accounting_policy, funding_events, metadata_source,
         ))
@@ -703,7 +720,8 @@ def run_backtest(candles: Sequence[Candle], instrument: Instrument, fee_schedule
         tuple(profiles[key] for key in sorted(profiles)), tuple(trades),
         len(ordered), skipped_no_reference, skipped_invalid_stop,
         tuple(skipped_low_first_target_rr),
-        pullback_orders_placed, pullback_orders_filled, pullback_orders_expired,
+        pullback_orders_placed, pullback_orders_filled, pullback_orders_filled_at_limit,
+        pullback_orders_gap_through, pullback_orders_accepted, pullback_orders_expired,
         pullback_orders_invalidated, pullback_orders_rejected_low_rr,
-        pullback_orders_unfilled_at_end,
+        pullback_orders_rejected_no_reference, pullback_orders_unfilled_at_end,
     )
