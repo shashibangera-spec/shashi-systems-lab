@@ -46,6 +46,7 @@ class BacktestConfig:
     runner_breakeven: bool = False
     runner_breakeven_min_rr: Decimal | None = None
     min_first_target_rr: Decimal | None = None
+    runner_next_amt_target: bool = False
 
     def __post_init__(self) -> None:
         if not self.row_size.is_finite() or self.row_size <= 0:
@@ -72,6 +73,8 @@ class BacktestConfig:
             not self.min_first_target_rr.is_finite() or self.min_first_target_rr <= 0
         ):
             raise ValueError("min_first_target_rr must be a positive finite Decimal when supplied")
+        if self.runner_next_amt_target and not self.runner_breakeven:
+            raise ValueError("runner_next_amt_target requires runner_breakeven=True")
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,6 +87,8 @@ class Signal:
     target_price: Decimal
     target_source: str
     atr: Decimal
+    next_target_price: Decimal | None = None
+    next_target_source: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -114,6 +119,9 @@ class TradeResult:
     net_including_funding_usd: Decimal | None
     funding_complete: bool
     missing_funding_events: tuple[datetime, ...]
+    next_amt_target: Decimal | None
+    next_amt_target_source: str | None
+    runner_target_status: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -227,6 +235,19 @@ def _target(direction: Direction, entry: Decimal, history: Sequence[SessionProfi
     return min(candidates, key=lambda item: item[0]) if direction == "long" else max(candidates, key=lambda item: item[0])
 
 
+def _next_target(direction: Direction, first_target: Decimal,
+                 history: Sequence[SessionProfile]) -> tuple[Decimal, str] | None:
+    """Find the nearest completed prior-session AMT reference strictly beyond Target 1."""
+    candidates: list[tuple[Decimal, str]] = []
+    for profile in history:
+        for label, value in (("VAH", profile.vah), ("POC", profile.poc), ("VAL", profile.val)):
+            if (direction == "long" and value > first_target) or (direction == "short" and value < first_target):
+                candidates.append((value, f"{profile.session_date.isoformat()}_{label}"))
+    if not candidates:
+        return None
+    return min(candidates, key=lambda item: item[0]) if direction == "long" else max(candidates, key=lambda item: item[0])
+
+
 def _rejection_ok(candle: Candle, direction: Direction, config: BacktestConfig, tick: Decimal) -> bool:
     span = candle.high - candle.low
     if span <= 0:
@@ -307,7 +328,10 @@ def _signal_at(candles: Sequence[Candle], index: int, profiles: dict[date, Sessi
     stop = _initial_stop(candle, direction, atr, instrument, config)
     if (direction == "long" and stop >= entry) or (direction == "short" and stop <= entry):
         return None, False
-    return Signal(index, setup, direction, level, stop, target[0], target[1], atr), False
+    next_target = _next_target(direction, target[0], history)
+    return Signal(index, setup, direction, level, stop, target[0], target[1], atr,
+                  next_target[0] if next_target else None,
+                  next_target[1] if next_target else None), False
 
 
 def _runner_breakeven_stop(entry_price: Decimal, direction: Direction,
@@ -384,6 +408,10 @@ def _close_trade(trade_id: int, signal: Signal, signal_candle_start_time: dateti
         gross, fees, funding_cash, gross - fees,
         gross - fees + funding_cash if complete else None,
         complete, tuple(sorted(missing)),
+        signal.next_target_price, signal.next_target_source,
+        ("NEXT_AMT_TARGET_REACHED" if reason == "RUNNER_NEXT_AMT_TARGET" else
+         "NO_SECOND_REFERENCE_BE_BREAKEVEN_FALLBACK" if config.runner_next_amt_target and signal.next_target_price is None else
+         "NEXT_AMT_TARGET_NOT_REACHED_BE_FALLBACK" if config.runner_next_amt_target else "RULE_DISABLED"),
     )
 
 
@@ -467,6 +495,23 @@ def run_backtest(candles: Sequence[Candle], instrument: Instrument, fee_schedule
                 ))
                 active = None
                 continue
+
+            # Stop-first priority: protective/fee-adjusted breakeven stop precedes runner target.
+            # Evaluate only from a candle after Target 1 was confirmed.
+            if (config.runner_next_amt_target and active["partial_time"] is not None
+                and signal.next_target_price is not None):
+                runner_target_hit = (candle.high >= signal.next_target_price if signal.direction == "long"
+                                     else candle.low <= signal.next_target_price)
+                if runner_target_hit:
+                    trades.append(_close_trade(
+                        int(active["trade_id"]), signal, ordered[signal.index].start_time,
+                        ordered[signal.index].end_time, active["entry_time"], active["entry_price"],
+                        active["partial_time"], active["partial_price"], candle.end_time,
+                        signal.next_target_price, "RUNNER_NEXT_AMT_TARGET", config, instrument,
+                        fee_schedule, accounting_policy, funding_events, metadata_source,
+                    ))
+                    active = None
+                    continue
 
             if active["partial_time"] is None:
                 target_hit = candle.high >= active["target"] if signal.direction == "long" else candle.low <= active["target"]
