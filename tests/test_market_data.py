@@ -83,3 +83,61 @@ def test_timestamp_rejects_out_of_range_epoch():
 
     with pytest.raises(MarketDataError, match="outside the supported range"):
         _timestamp("999999999999999999999999", "timestamp")
+
+
+def test_fetch_historical_candles_returns_complete_sessions_and_excludes_current_session(monkeypatch):
+    from datetime import timedelta
+    from shashi_engine import market_data
+
+    start = datetime(2026, 11, 19, 0, 0, tzinfo=timezone.utc)
+    all_rows = [
+        Candle("BTCUSD", "30m", start + timedelta(minutes=30 * i),
+               Decimal("60000"), Decimal("60100"), Decimal("59900"),
+               Decimal("60050"), Decimal("1"))
+        for i in range(96)
+    ]
+    calls = []
+
+    def fake_fetch(start_epoch, end_epoch, resolution="30m", timeout=10):
+        calls.append((start_epoch, end_epoch))
+        return list(reversed([
+            candle for candle in all_rows
+            if start_epoch <= int(candle.start_time.timestamp()) < end_epoch
+        ]))
+
+    monkeypatch.setattr(market_data, "fetch_candles", fake_fetch)
+    # 13:00 UTC on Nov 21: most recent completed AMT boundary is 00:00 UTC Nov 21.
+    result = market_data.fetch_historical_candles(
+        days=2, now=datetime(2026, 11, 21, 13, 0, tzinfo=timezone.utc)
+    )
+    assert len(result) == 96
+    assert result[0].start_time == start
+    assert result[-1].end_time == datetime(2026, 11, 21, 0, 0, tzinfo=timezone.utc)
+    assert len(calls) == 2
+    assert all(end - begin <= 48 * 1800 for begin, end in calls)
+
+
+def test_fetch_historical_candles_fails_closed_on_missing_bar(monkeypatch):
+    from datetime import timedelta
+    from shashi_engine import market_data
+
+    start = datetime(2026, 11, 19, 0, 0, tzinfo=timezone.utc)
+    rows = [
+        Candle("BTCUSD", "30m", start + timedelta(minutes=30 * i),
+               Decimal("60000"), Decimal("60100"), Decimal("59900"),
+               Decimal("60050"), Decimal("1"))
+        for i in range(96) if i != 17
+    ]
+    monkeypatch.setattr(market_data, "fetch_candles", lambda *args, **kwargs: rows)
+    with pytest.raises(MarketDataError, match="coverage is incomplete"):
+        market_data.fetch_historical_candles(
+            days=2, now=datetime(2026, 11, 21, 13, 0, tzinfo=timezone.utc)
+        )
+
+
+@pytest.mark.parametrize("days", [0, -1, 91, 1.5])
+def test_fetch_historical_candles_rejects_invalid_day_range(days):
+    from shashi_engine.market_data import fetch_historical_candles
+
+    with pytest.raises(ValueError, match="1 to 90"):
+        fetch_historical_candles(days=days)

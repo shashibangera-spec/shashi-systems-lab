@@ -46,3 +46,11 @@ These are implementation acceptance criteria, not claims of live-market validati
 33. CLI uses only public unauthenticated candle/product GET endpoints and local input/output files.
 34. No private account, credential, order, execution, database, dashboard, Pine or collector integration.
 35. Full local and GitHub Actions tests pass; PR remains open and unmerged pending explicit approval.
+
+
+## Public REST historical fetch
+36. \`--fetch-days 40\` requests 40 complete 05:30 IST sessions via bounded public GET calls and produces 1,920 30m bars when the exchange has complete coverage.
+37. The current developing AMT session is excluded by ending the request window at the latest UTC midnight / 05:30 IST boundary.
+38. Duplicate, missing or out-of-window timestamps fail closed; no synthetic bars are created.
+39. Historical fetch does not read, append, rewrite or otherwise mutate the append-only recorder JSONL.
+40. The backtest report is written to a separate, explicitly supplied output path.

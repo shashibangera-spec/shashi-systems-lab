@@ -17,7 +17,7 @@ sys.path.insert(0, str(ROOT / "src"))
 from shashi_engine.amt_pa_backtest import BacktestConfig, run_backtest
 from shashi_engine.accounting import AccountingPolicy, FeeSchedule, FundingEvent
 from shashi_engine.contract_verification import fetch_btcusd_product, parse_product
-from shashi_engine.market_data import MarketDataError, fetch_candles
+from shashi_engine.market_data import MarketDataError, fetch_candles, fetch_historical_candles
 from shashi_engine.models import Candle, Instrument
 
 
@@ -104,6 +104,7 @@ def main() -> int:
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--start-utc", type=parse_utc)
     source.add_argument("--input-jsonl", type=Path)
+    source.add_argument("--fetch-days", type=int, metavar="DAYS", help="fetch exact complete 05:30 IST sessions from public Delta REST (1–90 days)")
     parser.add_argument("--end-utc", type=parse_utc)
     parser.add_argument("--funding-csv", type=Path)
     parser.add_argument("--output", type=Path, default=Path("data/reports/phase1i_backtest.json"))
@@ -124,8 +125,13 @@ def main() -> int:
         if instrument.product_id != 27:
             raise ValueError("verified Delta product is not product_id 27")
 
+        fetch_window = None
         if args.input_jsonl:
             candles = load_jsonl(args.input_jsonl)
+        elif args.fetch_days is not None:
+            candles = fetch_historical_candles(days=args.fetch_days)
+            if candles:
+                fetch_window = {"start_utc": candles[0].start_time.isoformat(), "end_exclusive_utc": candles[-1].end_time.isoformat(), "complete_ist_sessions": args.fetch_days}
         else:
             if args.end_utc is None or args.end_utc <= args.start_utc:
                 parser.error("--end-utc must be later than --start-utc")
@@ -178,6 +184,7 @@ def main() -> int:
                 "funding_file_supplied": args.funding_csv is not None,
             },
             "candles_used": result.candles_used,
+            "historical_fetch_window": fetch_window,
             "complete_profiles": len(result.profiles),
             "skipped_no_reference": result.skipped_no_reference,
             "skipped_invalid_stop": result.skipped_invalid_stop,

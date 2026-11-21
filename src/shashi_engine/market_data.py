@@ -18,6 +18,9 @@ from .models import Candle, Ticker
 
 BASE_URL = "https://api.india.delta.exchange"
 USER_AGENT = "shashi-systems-lab/0.1"
+BAR_SECONDS = 30 * 60
+UTC_DAY_SECONDS = 24 * 60 * 60
+HISTORY_CHUNK_BARS = 48
 
 
 class MarketDataError(RuntimeError):
@@ -57,17 +60,12 @@ def _timestamp(value: Any, field: str) -> datetime:
             raise MarketDataError(f"Invalid timestamp field: {field}") from exc
         if not numeric.is_finite() or numeric <= 0:
             raise MarketDataError(f"Invalid timestamp field: {field}")
-
-        # Infer the epoch unit from its magnitude. Contemporary Unix epochs
-        # are approximately 1e9 (seconds), 1e12 (milliseconds), 1e15
-        # (microseconds), or 1e18 (nanoseconds).
         if numeric >= Decimal("1e17"):
             numeric /= Decimal("1e9")
         elif numeric >= Decimal("1e14"):
             numeric /= Decimal("1e6")
         elif numeric >= Decimal("1e11"):
             numeric /= Decimal("1e3")
-
         try:
             result = datetime.fromtimestamp(float(numeric), tz=timezone.utc)
         except (OverflowError, OSError, ValueError) as exc:
@@ -82,6 +80,7 @@ def _timestamp(value: Any, field: str) -> datetime:
     if result.tzinfo is None:
         result = result.replace(tzinfo=timezone.utc)
     return result.astimezone(timezone.utc)
+
 
 def _request_json(path: str, params: dict[str, str] | None = None, timeout: int = 10) -> Any:
     query = f"?{urlencode(params)}" if params else ""
@@ -137,21 +136,13 @@ def parse_candles(payload: Any, resolution: str = "30m") -> list[OHLCVCandle]:
         assert opening is not None and high is not None and low is not None
         assert close is not None and volume is not None
         try:
-            candles.append(
-                Candle(
-                    symbol="BTCUSD",
-                    resolution=resolution,
-                    start_time=_timestamp(stamp, f"candles[{index}].time"),
-                    open=opening,
-                    high=high,
-                    low=low,
-                    close=close,
-                    volume=volume,
-                )
-            )
+            candles.append(Candle(
+                symbol="BTCUSD", resolution=resolution,
+                start_time=_timestamp(stamp, f"candles[{index}].time"),
+                open=opening, high=high, low=low, close=close, volume=volume,
+            ))
         except ValueError as exc:
             raise MarketDataError(f"Candle row {index} failed OHLCV/domain validation: {exc}") from exc
-    # Preserve exchange response order so the quality layer can detect bad ordering.
     return candles
 
 
@@ -178,6 +169,51 @@ def fetch_candles(
         timeout=timeout,
     )
     return parse_candles(result, resolution=resolution)
+
+
+def fetch_historical_candles(days: int = 40, now: datetime | None = None) -> list[OHLCVCandle]:
+    """Fetch exact, complete 05:30 IST sessions (00:00 UTC boundaries), without writing recorder files.
+
+    Requests are bounded to 48 half-hour bars apiece. The current partial AMT session is
+    excluded. Missing, duplicate, or out-of-range timestamps fail closed rather than
+    being silently filled or handed to the backtester.
+    """
+    if not isinstance(days, int) or not 1 <= days <= 90:
+        raise ValueError("days must be a whole number from 1 to 90")
+    observed_now = now or datetime.now(timezone.utc)
+    if observed_now.tzinfo is None or observed_now.utcoffset() is None:
+        raise ValueError("now must be timezone-aware")
+    now_epoch = int(observed_now.astimezone(timezone.utc).timestamp())
+    # End at the most recent 00:00 UTC boundary (= 05:30 IST), so every
+    # requested AMT session is complete and the developing session is excluded.
+    end_epoch = (now_epoch // UTC_DAY_SECONDS) * UTC_DAY_SECONDS
+    start_epoch = end_epoch - days * UTC_DAY_SECONDS
+    candles: list[OHLCVCandle] = []
+    cursor = start_epoch
+    chunk_seconds = HISTORY_CHUNK_BARS * BAR_SECONDS
+    while cursor < end_epoch:
+        stop = min(cursor + chunk_seconds, end_epoch)
+        chunk = fetch_candles(cursor, stop, resolution="30m")
+        in_range = [c for c in chunk if cursor <= int(c.start_time.timestamp()) < stop]
+        candles.extend(in_range)
+        cursor = stop
+
+    candles.sort(key=lambda item: item.start_time)
+    expected_count = days * 48
+    expected_stamps = [start_epoch + i * BAR_SECONDS for i in range(expected_count)]
+    actual_stamps = [int(c.start_time.timestamp()) for c in candles]
+    if len(actual_stamps) != len(set(actual_stamps)):
+        raise MarketDataError("Historical candle fetch returned duplicate timestamps")
+    if actual_stamps != expected_stamps:
+        actual_set = set(actual_stamps)
+        expected_set = set(expected_stamps)
+        missing = sorted(expected_set - actual_set)
+        extra = sorted(actual_set - expected_set)
+        raise MarketDataError(
+            f"Historical candle coverage is incomplete: expected {expected_count}, "
+            f"received {len(actual_stamps)}, missing={len(missing)}, out_of_range={len(extra)}"
+        )
+    return candles
 
 
 def ticker_to_json(ticker: Ticker) -> dict[str, Any]:

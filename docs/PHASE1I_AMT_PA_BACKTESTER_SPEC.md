@@ -110,3 +110,16 @@ Acceptance requires full test suite, exact PR-head CI green, deterministic synth
 ## 10. Safety boundaries
 
 Research-only. No strategy-to-execution wiring, orders, demo orders, private account access, production credentials, dashboard/database/Pine/collector changes, leverage, margin, liquidation or automated sizing. Phase 1E RiskGate remains separate; this backtester does not treat APPROVED_FOR_RESEARCH_ONLY as execution authorization.
+
+
+## 11. Public historical REST fetch option
+
+The CLI supports \`--fetch-days N\` (1–90). It uses the existing Phase 1B unauthenticated Delta India \`GET /v2/history/candles\` adapter in bounded 48-candle requests. The window is anchored to UTC midnight, which is 05:30 IST, and ends at the latest completed 05:30 IST session boundary. Thus \`--fetch-days 40\` requests 40 complete sessions (1,920 half-hour candles), excluding the developing session. The helper sorts exchange rows and fails closed on duplicate or missing candle timestamps; it does not fill gaps.
+
+The helper returns candles in memory only. It does not open, append to, rewrite or otherwise touch \`recordings/btcusd_30m.jsonl\` or any recorder file. Backtest output is a separate report path. Example from the repository root on Windows PowerShell:
+
+\`\`\`powershell
+py -3 scripts\\backtest_btcusd_amt_pa.py --fetch-days 40 --output data\\reports\\phase1i_btcusd_40d.json
+\`\`\`
+
+Historical candle data is public and unauthenticated. Funding is not included by this fetch; unless a complete, separately verified funding CSV is supplied, net including funding remains unavailable for trades with expected funding events.

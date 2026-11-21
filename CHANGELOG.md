@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Phase 1I: add a bounded public Delta REST historical fetch option for 1–90 complete 05:30 IST sessions; verify exact candle coverage and keep the append-only recorder JSONL untouched.
 - Phase 1I: add offline Delta India BTCUSD perpetual 30m AMT + Price Action research backtester.
 - Reuse the Phase 1B public candle/product metadata adapters and Phase 1E Decimal accounting for fees, GST and explicit 8-hour funding events.
 - Reconstruct complete 05:30 IST AMT sessions with fixed $50 TPO rows and 70% value area; exclude developing-session references from profit targets.
