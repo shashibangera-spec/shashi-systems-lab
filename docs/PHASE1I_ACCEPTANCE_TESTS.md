@@ -68,3 +68,15 @@ These are implementation acceptance criteria, not claims of live-market validati
 - With `--pullback-require-tick-through`, a buy limit fills only if the candle low is at least one instrument tick below the limit; a sell limit fills only if the candle high is at least one tick above. A mere touch does not fill.
 - With tick-through enabled, an opening gap at least one tick beyond the limit fills at the better opening price and is taker; a later qualifying penetration fills at the resting limit and is maker when `--pullback-maker-entry` is enabled. Setup B next-open entries and all exits remain taker.
 - Pullback order accounting reconciles placed = filled + expired + stop-invalidated + pending; filled = accepted, with zero post-fill minimum-R:R rejections.
+
+
+## Optional ATR runner trailing-stop acceptance
+
+41. `--runner-trail-atr-multiplier 2.0` requires fee-adjusted runner breakeven and is mutually exclusive with `--runner-next-amt-target`.
+42. The trail activates only after Target 1 is confirmed at a completed candle close and is first effective on the following candle.
+43. Long trailing candidates use highest high since T1 minus multiplier × previous completed candle ATR(14), rounded down to $0.50; short candidates use lowest low since T1 plus multiplier × ATR(14), rounded up to $0.50.
+44. Fee-adjusted breakeven is the absolute floor; stops ratchet only in the protective direction and never loosen.
+45. A candle's high/low may update the watermark only for the next candle; the candidate may not use the current candle's not-yet-completed range.
+46. Gap-through stop exits fill at the candle open; otherwise at the stop. All exits remain taker.
+47. Trailing mode has no fixed Target 2; all entry, Target 1, initial stop, 1.0R, pullback, tick-through and accounting rules remain identical to the control.
+48. Synthetic tests cover activation timing, trailing-stop price, gap-through fill, breakeven floor and invalid/mutually-exclusive configuration.
