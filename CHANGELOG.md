@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Phase 1J: add SQLite-backed durable session loss evaluation/latch (fixed USD 2.50), deterministic client-order intent ledger, transactional append-only hash-chained audit events, secret-field redaction, and restart/replay integrity tests; persistence is local/offline only.
 - Phase 1J: approve a fixed USD 2.50 daily-loss kill-switch for each 05:30 IST session; include realized/unrealized P&L, fees/charges and funding, and fail closed when any component is unavailable.
 - Phase 1J: add an in-memory mock-only execution state machine, exact Testnet-origin validator, 2-lot exposure guard, session-loss latch, intent deduplication and reconciliation gates; no exchange client, credentials, persistence adapter or order route.
 - Phase 1J: add synthetic unit/acceptance tests for environment rejection, daily-loss boundaries, missing P&L inputs, exposure aggregation, reconciliation, duplicate intents and illegal/unknown state transitions.
