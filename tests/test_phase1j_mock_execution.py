@@ -223,7 +223,7 @@ def test_duplicate_intent_cannot_be_reused():
     }
     assert machine.permit_entry("same-signal", **args)
     machine.transition(State.ENTRY_WORKING)
-    machine.transition(State.POSITION_OPEN)
+    machine.confirm_entry_fill(protective_coverage_confirmed=True)
     machine.transition(State.EXIT_PENDING)
     machine.transition(State.FLAT_RECONCILIATION)
     machine.transition(State.READY)
@@ -254,3 +254,30 @@ def test_mock_module_has_no_exchange_adapter_surface():
     assert not hasattr(module, "httpx")
     assert not hasattr(module, "websocket")
     assert not hasattr(module, "submit_order")
+
+
+
+def test_entry_fill_without_confirmed_protection_enters_protection_fault():
+    machine = ready_machine()
+    machine.transition(State.SIGNAL_PENDING)
+    machine.transition(State.ENTRY_WORKING)
+    machine.confirm_entry_fill(protective_coverage_confirmed=False)
+    assert machine.state is State.PROTECTION_FAULT
+
+
+def test_entry_fill_cannot_bypass_protection_confirmation():
+    machine = ready_machine()
+    machine.transition(State.SIGNAL_PENDING)
+    machine.transition(State.ENTRY_WORKING)
+    with pytest.raises(SafetyError, match="verified protection"):
+        machine.transition(State.POSITION_OPEN)
+
+
+def test_startup_reconciliation_enforces_aggregate_two_lot_cap():
+    machine = MockExecutionMachine()
+    machine.preflight("https://testnet-api.delta.exchange", True, True)
+    machine.reconcile(clean_reconciliation(
+        exchange_position_lots=2,
+        exchange_live_entry_lots=1,
+    ))
+    assert machine.state is State.RECONCILIATION_BLOCKED
