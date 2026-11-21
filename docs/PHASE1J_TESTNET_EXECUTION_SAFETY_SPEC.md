@@ -1,6 +1,6 @@
 # Phase 1J — Delta Exchange India Testnet Execution Safety Specification
 
-**Status:** Draft for review — documentation only  
+**Status:** Approved safety specification; mock-only implementation in progress  
 **Phase:** 1J  
 **Branch:** `phase1j-testnet-execution-spec`  
 **Base:** `main` at Phase 1I merge commit `842c5e25b7335ff84af279d611b73c0e74c95911`  
@@ -60,7 +60,7 @@ This host check is a safety guard, not proof that credentials are Testnet creden
 
 A 2-lot trade is intended to support one lot for the 50% first-target reduction and one lot for the runner. Quantity rounding must be validated against the exchange contract's lot increment before any future order is allowed.
 
-### 3.2 Daily loss kill-switch — mandatory, threshold unresolved
+### 3.2 Daily loss kill-switch — fixed approved threshold
 
 The kill-switch must latch when the configured daily loss limit is reached or exceeded. Daily loss measurement must include:
 - realized trading P&L;
@@ -70,7 +70,7 @@ The kill-switch must latch when the configured daily loss limit is reached or ex
 
 Use exchange-reported fills, fees, funding and position marks where available; record the source and timestamp of each component. If any required component is stale or unavailable, the risk calculation is unknown and new entries are blocked.
 
-**The numeric daily loss limit has not yet been approved. This is a hard implementation blocker.** No permissive default, zero-as-disabled behavior, or silent fallback is allowed. Before implementation, the user must approve a fixed quote-currency amount (USD) for the 05:30 IST–05:30 IST trading session and the exact treatment of unrealized P&L and fees. The threshold must be immutable while a session is active.
+**Approved immutable threshold:** `DAILY_LOSS_LIMIT_USD = 2.50`. The user approved USD 2.50 on 22 November 2026, representing 2.5% of the planned USD 100 capital. The limit applies to each 05:30 IST–05:30 IST session. Calculate session net P&L as realized P&L + unrealized P&L − trading fees/charges + funding credits/debits (funding debits are negative; credits are positive), all normalized to USD. Latch when net P&L is less than or equal to -USD 2.50. The threshold is fixed and cannot be changed or disabled through runtime configuration. If any required component is missing, stale, invalid, or not denominated/convertible to USD with verified data, the calculation is unknown and new entries are blocked; the mock safety model latches this condition.
 
 On trigger:
 1. Latch the kill-switch persistently for the session.
@@ -253,7 +253,7 @@ Never log API keys, signatures, authorization headers, secrets, or raw credentia
 
 The following must be explicitly settled before any order route can be connected:
 
-1. **Daily loss limit:** exact USD threshold, whether measured from 05:30 IST session start, and treatment of unrealized P&L, fees and funding.
+1. ~~Daily loss limit~~ **Resolved:** USD 2.50 per 05:30 IST–05:30 IST session; include realized and unrealized P&L, subtract fees/charges, and include funding credits/debits. Missing or stale components block entries and latch the mock kill-switch.
 2. **Protective-order semantics:** verify Delta Testnet support for reduce-only stops, stop trigger source, amend/replace guarantees, partial fills, and behavior on disconnect.
 3. **Client-order idempotency:** confirm accepted client ID field, uniqueness scope, queryability and retention after cancellation/fill.
 4. **Testnet account isolation:** verify the Testnet API key is distinct from production and has only required permissions.
@@ -264,18 +264,18 @@ The following must be explicitly settled before any order route can be connected
 9. **Funding/fee accounting:** verify the Testnet event sources and currencies for actual fees/funding; do not infer missing values.
 10. **Session shutdown:** define handling of open positions and orders at 05:30 IST; no automatic liquidation assumption is made.
 
-Until these are approved, the only permitted activity is offline specification review and read-only test planning.
+The daily-loss decision is resolved as above. All other Section 11 blockers remain unresolved and continue to prohibit exchange connectivity and order routes. The current implementation is mock-only and in-memory; it is not a durable execution service.
 
 ## 12. Acceptance gates before first Testnet order
 
 The first Testnet order remains prohibited until all gates pass:
 
-- [ ] This specification reviewed and approved.
+- [x] This specification reviewed and approved.
 - [ ] All Section 11 blockers resolved in writing.
 - [ ] Exact Testnet hostname allowlist and production-host negative tests pass.
 - [ ] Testnet-only credential isolation verified without exposing secrets.
 - [ ] 2-lot aggregate exposure cap tested across positions plus working orders.
-- [ ] Daily loss kill-switch tested at, below and above threshold, including restart persistence.
+- [ ] Daily loss kill-switch tested at, below and above the USD 2.50 threshold, including durable restart persistence (mock tests cover latch behavior; production-grade persistence remains unimplemented).
 - [ ] Startup reconciliation tested for flat, open position, open order, orphan fill, stale snapshot and external/manual order.
 - [ ] Duplicate submission, timeout, lost response, replay and process restart tests prove no duplicate exposure.
 - [ ] Protective stop coverage, partial fill, cancel/replace and reduce-only behavior verified on Testnet.
@@ -288,4 +288,4 @@ Passing these gates does not authorize production access. Production API host, p
 
 ## 13. Phase boundary
 
-Phase 1J begins with this written safety specification only. The next work item, after review, is a test plan and mock/sandbox state-machine tests that do not contact the exchange. Only after those are approved may a separately scoped Testnet connectivity step be proposed. No production route will be implemented in Phase 1J.
+Phase 1J begins with this written safety specification only. The next work item is mock-only state-machine and fail-closed safety tests that do not contact the exchange. Only after those are approved may a separately scoped Testnet connectivity step be proposed. No production route will be implemented in Phase 1J.
