@@ -118,6 +118,7 @@ def test_even_lot_requirement_for_partial():
 def _run_with_injected_signal(
     monkeypatch, entry_bar, following_bars, config=None,
     target_price=Decimal("60050"), stop_price=Decimal("59999"),
+    next_target_price=None,
 ):
     import shashi_engine.amt_pa_backtest as engine
 
@@ -129,6 +130,7 @@ def _run_with_injected_signal(
     injected = Signal(
         signal_index, "A_FAILED_AUCTION", "long", Decimal("59000"),
         stop_price, target_price, "2026-11-19_POC", Decimal("100"),
+        next_target_price, "2026-11-18_VAH" if next_target_price is not None else None,
     )
 
     def fake_signal_at(candles, index, profiles, market_instrument, config):
@@ -385,3 +387,83 @@ def test_stop_atr_multiplier_must_be_finite_and_nonnegative():
         BacktestConfig(stop_atr_multiplier=Decimal("-0.01"))
     with pytest.raises(ValueError, match="stop_atr_multiplier"):
         BacktestConfig(stop_atr_multiplier=Decimal("NaN"))
+
+
+def test_next_amt_target_selects_nearest_completed_level_strictly_beyond_first_target():
+    from shashi_engine.amt_pa_backtest import SessionProfile, _next_target
+    history = [
+        SessionProfile(date(2026, 11, 20), Decimal("61200"), Decimal("60800"), Decimal("60000"), 100, 48),
+        SessionProfile(date(2026, 11, 19), Decimal("61500"), Decimal("61000"), Decimal("60500"), 100, 48),
+    ]
+    assert _next_target("long", Decimal("60800"), history) == (Decimal("61000"), "2026-11-19_VAL")
+    assert _next_target("short", Decimal("60500"), history) == (Decimal("60000"), "2026-11-20_VAL")
+    assert _next_target("long", Decimal("61200"), history) is None
+
+
+def test_runner_next_amt_target_closes_runner_after_partial_confirmation(monkeypatch):
+    bars = session_candles(date(2026, 11, 20))
+    partial_bar = Candle(
+        "BTCUSD", "30m", bars[14].start_time, Decimal("60000"),
+        Decimal("60060"), Decimal("59990"), Decimal("60055"), Decimal("1"),
+    )
+    runner_bar = Candle(
+        "BTCUSD", "30m", bars[15].start_time, Decimal("60060"),
+        Decimal("60120"), Decimal("60050"), Decimal("60100"), Decimal("1"),
+    )
+    trade, _ = _run_with_injected_signal(
+        monkeypatch, partial_bar, [runner_bar],
+        BacktestConfig(runner_breakeven=True, runner_next_amt_target=True),
+        next_target_price=Decimal("60100"),
+    )
+    assert trade.partial_exit_time == partial_bar.end_time
+    assert trade.final_exit_time == runner_bar.end_time
+    assert trade.final_exit_price == Decimal("60100")
+    assert trade.final_exit_reason == "RUNNER_NEXT_AMT_TARGET"
+    assert trade.next_amt_target == Decimal("60100")
+    assert trade.next_amt_target_source == "2026-11-18_VAH"
+    assert trade.runner_target_status == "NEXT_AMT_TARGET_REACHED"
+
+
+def test_runner_stop_wins_same_candle_collision_with_next_amt_target(monkeypatch):
+    bars = session_candles(date(2026, 11, 20))
+    partial_bar = Candle(
+        "BTCUSD", "30m", bars[14].start_time, Decimal("60000"),
+        Decimal("60060"), Decimal("59990"), Decimal("60055"), Decimal("1"),
+    )
+    collision_bar = Candle(
+        "BTCUSD", "30m", bars[15].start_time, Decimal("60050"),
+        Decimal("60120"), Decimal("60000"), Decimal("60100"), Decimal("1"),
+    )
+    trade, _ = _run_with_injected_signal(
+        monkeypatch, partial_bar, [collision_bar],
+        BacktestConfig(runner_breakeven=True, runner_next_amt_target=True),
+        next_target_price=Decimal("60100"),
+    )
+    assert trade.final_exit_reason == "RUNNER_FEE_ADJUSTED_BREAKEVEN"
+    assert trade.final_exit_price < Decimal("60100")
+    assert trade.runner_target_status == "NEXT_AMT_TARGET_NOT_REACHED_BE_FALLBACK"
+
+
+def test_runner_next_amt_missing_reference_records_breakeven_fallback(monkeypatch):
+    bars = session_candles(date(2026, 11, 20))
+    partial_bar = Candle(
+        "BTCUSD", "30m", bars[14].start_time, Decimal("60000"),
+        Decimal("60060"), Decimal("59990"), Decimal("60055"), Decimal("1"),
+    )
+    fallback_bar = Candle(
+        "BTCUSD", "30m", bars[15].start_time, Decimal("60050"),
+        Decimal("60070"), Decimal("60000"), Decimal("60040"), Decimal("1"),
+    )
+    trade, _ = _run_with_injected_signal(
+        monkeypatch, partial_bar, [fallback_bar],
+        BacktestConfig(runner_breakeven=True, runner_next_amt_target=True),
+    )
+    assert trade.final_exit_reason == "RUNNER_FEE_ADJUSTED_BREAKEVEN"
+    assert trade.next_amt_target is None
+    assert trade.next_amt_target_source is None
+    assert trade.runner_target_status == "NO_SECOND_REFERENCE_BE_BREAKEVEN_FALLBACK"
+
+
+def test_runner_next_amt_target_requires_fee_adjusted_breakeven():
+    with pytest.raises(ValueError, match="requires runner_breakeven"):
+        BacktestConfig(runner_next_amt_target=True)
