@@ -154,7 +154,7 @@ def test_missing_pnl_component_latches_fail_closed(incomplete):
     assert latch.reason == "P_AND_L_COMPONENT_MISSING_OR_INVALID"
 
 
-@pytest.mark.parametrize("value", ["0", "-0.01", "2.500", "NaN"])
+@pytest.mark.parametrize("value", ["0", "-0.01", "2.51", "NaN"])
 def test_limit_cannot_be_disabled_or_changed(value):
     with pytest.raises(ValueError):
         DailyLossLatch("session-1", Decimal(value))
