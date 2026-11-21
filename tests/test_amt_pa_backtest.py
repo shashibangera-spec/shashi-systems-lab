@@ -437,7 +437,7 @@ def test_runner_stop_wins_same_candle_collision_with_next_amt_target(monkeypatch
     trade, _ = _run_with_injected_signal(
         monkeypatch, partial_bar, [collision_bar],
         BacktestConfig(runner_breakeven=True, runner_next_amt_target=True),
-        next_target_price=Decimal("60100"),
+        next_target_price=Decimal("60100"), stop_price=Decimal("59900"),
     )
     assert trade.final_exit_reason == "RUNNER_FEE_ADJUSTED_BREAKEVEN"
     assert trade.final_exit_price < Decimal("60100")
@@ -457,6 +457,7 @@ def test_runner_next_amt_missing_reference_records_breakeven_fallback(monkeypatc
     trade, _ = _run_with_injected_signal(
         monkeypatch, partial_bar, [fallback_bar],
         BacktestConfig(runner_breakeven=True, runner_next_amt_target=True),
+        stop_price=Decimal("59900"),
     )
     assert trade.final_exit_reason == "RUNNER_FEE_ADJUSTED_BREAKEVEN"
     assert trade.next_amt_target is None
