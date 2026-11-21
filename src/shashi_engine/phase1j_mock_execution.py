@@ -70,7 +70,7 @@ class SessionPnl:
 
     def net_usd(self) -> Decimal | None:
         values = (self.realized_usd, self.unrealized_usd, self.fees_usd, self.funding_usd)
-        if any(value is None or not value.is_finite() for value in values):
+        if any(not isinstance(value, Decimal) or not value.is_finite() for value in values):
             return None
         assert self.realized_usd is not None
         assert self.unrealized_usd is not None
@@ -192,6 +192,8 @@ class MockExecutionMachine:
     intents: IntentRegistry = field(default_factory=IntentRegistry)
 
     def transition(self, target: State) -> None:
+        if self.state is State.READY and target is State.SIGNAL_PENDING:
+            raise SafetyError("entry eligibility must pass permit_entry()")
         if self.state in {State.ENTRY_WORKING, State.ENTRY_CANCEL_PENDING} and target is State.POSITION_OPEN:
             raise SafetyError("entry fills require confirm_entry_fill() with verified protection")
         if target not in _ALLOWED.get(self.state, frozenset()):
@@ -237,7 +239,7 @@ class MockExecutionMachine:
             or not self.intents.register(intent_id)
         ):
             return False
-        self.transition(State.SIGNAL_PENDING)
+        self.state = State.SIGNAL_PENDING
         return True
 
     def mark_submission_unknown(self) -> None:
