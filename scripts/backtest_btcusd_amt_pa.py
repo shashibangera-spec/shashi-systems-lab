@@ -121,6 +121,10 @@ def main() -> int:
     parser.add_argument("--output", type=Path, default=Path("data/reports/phase1i_backtest.json"))
     parser.add_argument("--position-lots", type=int, default=2)
     parser.add_argument(
+        "--stop-atr-multiplier", type=Decimal, default=Decimal("0"), metavar="MULTIPLIER",
+        help="initial stop padding beyond the signal candle extreme in signal ATR units; 0 preserves the one-tick baseline (e.g. 0.25 or 0.50)",
+    )
+    parser.add_argument(
         "--runner-breakeven", action="store_true",
         help="after a confirmed 50%% target partial, move the remaining runner stop to fee-adjusted breakeven from the next candle",
     )
@@ -184,6 +188,7 @@ def main() -> int:
             funding_events=funding,
             config=BacktestConfig(
                 position_lots=args.position_lots,
+                stop_atr_multiplier=args.stop_atr_multiplier,
                 runner_breakeven=args.runner_breakeven,
                 runner_breakeven_min_rr=args.runner_breakeven_min_rr,
                 min_first_target_rr=args.min_first_target_rr,
@@ -205,7 +210,14 @@ def main() -> int:
             "profile_method": {"tpo_row_usd": "50", "value_area_fraction": "0.70",
                                "complete_session_bars": 48},
             "assumptions": {
-                "position_lots": args.position_lots, "partial_close_fraction": "0.50",
+                "position_lots": args.position_lots,
+                "stop_pad_ticks": 1,
+                "stop_atr_multiplier": str(args.stop_atr_multiplier),
+                "stop_padding_method": (
+                    "one_tick_baseline" if args.stop_atr_multiplier == 0
+                    else "signal_ATR_multiplier_beyond_signal_candle_extreme"
+                ),
+                "partial_close_fraction": "0.50",
                 "entry_and_exit_liquidity": "taker", "maker_fee": "0.0002",
                 "taker_fee": "0.0005", "gst_on_fee": "0.18",
                 "fee_gst_currency_and_exchange_rounding": "Phase 1E explicit USD scenario assumptions; not exchange-reconciled",
