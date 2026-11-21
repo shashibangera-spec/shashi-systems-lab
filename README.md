@@ -32,8 +32,8 @@ This repository is public. Never commit API keys, credentials, account identifie
 See [Phase 1 design](docs/PHASE1_DESIGN.md) for the reconciled milestone roadmap. Phase 1A currency/fee research is closed in [Phase 1A documentation](docs/PHASE1A_CURRENCY_AND_FEES.md); non-executing risk controls are documented in [Phase 1D](docs/PHASE1D_RISK_CONTROLS.md).
 
 - **Phase 1E — CLOSED:** non-executing accounting simulator. See [specification](docs/PHASE1E_ACCOUNTING_SIMULATOR_SPEC.md) and [acceptance tests](docs/PHASE1E_ACCEPTANCE_TESTS.md). RiskGate remains USD-only; INR equivalents require explicit fresh FX and are display-only.
-- **Phase 1F — UNDER REVIEW:** append-only local recorder, feed-health monitoring and REST gap recovery. See [specification](docs/PHASE1F_RECORDER_SPEC.md) and [acceptance tests](docs/PHASE1F_ACCEPTANCE_TESTS.md).
-- **Phase 1G — PROPOSED:** historical dataset validation and deterministic replay.
+- **Phase 1F — CLOSED:** append-only local recorder, feed-health monitoring and REST gap recovery. See [specification](docs/PHASE1F_RECORDER_SPEC.md) and [acceptance tests](docs/PHASE1F_ACCEPTANCE_TESTS.md).
+- **Phase 1G — UNDER REVIEW:** JSONL history audit, read-only REST gap validation, restart/append integrity and data-quality reporting. See [specification](docs/PHASE1G_HISTORY_INTEGRITY_SPEC.md) and [acceptance tests](docs/PHASE1G_ACCEPTANCE_TESTS.md).
 - **Phase 1H — NOT AUTHORIZED:** demo execution requires separate explicit approval.
 
 The repository uses public market data only and does not place orders or connect to the existing BTC dashboard or its production database.
