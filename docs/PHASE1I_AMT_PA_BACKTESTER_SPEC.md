@@ -82,7 +82,7 @@ For a long, two consecutive completed candles after entry closing below the setu
 ## 7. Fees, GST, funding and USD ledger
 
 - Reuse Phase 1E calculate_accounting, FeeSchedule, FundingEvent and AccountingPolicy; do not duplicate formulas.
-- Baseline entry and exit fills are explicitly taker assumptions; maker fills are not inferred from order type.
+- Baseline non-pullback entry and all exit fills are explicitly taker assumptions. Pullback resting-limit maker fees are an optional scenario and are not evidence of queue priority or guaranteed exchange fills.
 - Base scenario schedule: maker 0.02%, taker 0.05%, GST 18% on trading fees. Fee/GST currency and exchange rounding remain unverified assumptions under Phase 1E; results must never claim exchange-reconciled account PnL.
 - Positive funding means longs pay shorts; negative funding means shorts pay longs. Apply each explicit 8-hour event on mark-price notional. Funding is separate from fees/GST.
 - Historical funding observations are supplied as a separate local CSV with columns timestamp_utc,rate,mark_price. The public candle adapter does not fabricate historical funding.
@@ -98,6 +98,14 @@ For a long, two consecutive completed candles after entry closing below the setu
 - All signal, entry, partial and final timestamps are retained in output.
 - Price/fee/funding arithmetic uses Decimal.
 - Local output reports are research artifacts only; raw recorder JSONL remains append-only and is never rewritten.
+
+### Setup A pullback execution refinement
+
+- When `--pullback-entry` and `--min-first-target-rr` are enabled, evaluate eligibility at signal close using the resting limit price (Prior VAL for long / Prior VAH for short), signal-derived initial stop and nearest eligible completed prior-session AMT Target 1. Reject a low-R:R signal before placing/counting a resting order.
+- Freeze Target 1 and the next-AMT runner reference at signal close from the resting limit price. Do not re-select either level after a later fill. A qualifying gap-through opening fill is at a better price than the limit, so the pre-order R:R screen is conservative relative to the fixed target and stop.
+- Optional `--pullback-require-tick-through` requires at least one instrument tick of penetration beyond the resting limit: buy limit requires low <= limit - tick; sell limit requires high >= limit + tick. A mere touch does not fill.
+- When tick-through is enabled, an opening price at least one tick beyond the limit fills at the better open and is classified taker. Otherwise, a later qualifying penetration fills at the resting limit and is classified maker only when `--pullback-maker-entry` is enabled. Setup B next-open entries and all exits remain taker.
+- Order counts distinguish low-R:R signals rejected before placement from actual orders. All actual pullback fills must be accepted; post-fill minimum-R:R rejections are zero.
 
 ## 9. Reporting and acceptance
 
