@@ -148,6 +148,10 @@ def main() -> int:
         "--pullback-limit-bars", type=int, default=3, metavar="BARS",
         help="number of completed 30m candles after the signal during which the Setup A limit remains valid (default: 3)",
     )
+    parser.add_argument(
+        "--pullback-maker-entry", action="store_true",
+        help="charge maker fee only for resting Setup A pullback fills at the limit; gap-through opening fills and all exits remain taker",
+    )
     args = parser.parse_args()
 
     try:
@@ -207,6 +211,7 @@ def main() -> int:
                 runner_next_amt_target=args.runner_next_amt_target,
                 pullback_entry=args.pullback_entry,
                 pullback_limit_bars=args.pullback_limit_bars,
+                pullback_maker_entry=args.pullback_maker_entry,
             ),
             metadata_source="Delta India public product verifier",
         )
@@ -233,7 +238,9 @@ def main() -> int:
                     else "signal_ATR_multiplier_beyond_signal_candle_extreme"
                 ),
                 "partial_close_fraction": "0.50",
-                "entry_and_exit_liquidity": "taker", "maker_fee": "0.0002",
+                "entry_and_exit_liquidity": "taker", "pullback_maker_entry_enabled": args.pullback_maker_entry,
+                "pullback_entry_fee_rule": ("resting limit fills=maker; gap-through opening fills=taker; Setup B next-open=taker" if args.pullback_maker_entry else "all entries taker"),
+                "maker_fee": "0.0002",
                 "taker_fee": "0.0005", "gst_on_fee": "0.18",
                 "fee_gst_currency_and_exchange_rounding": "Phase 1E explicit USD scenario assumptions; not exchange-reconciled",
                 "funding_file_supplied": args.funding_csv is not None,
@@ -263,10 +270,19 @@ def main() -> int:
             "pullback_order_counts": {
                 "placed": result.pullback_orders_placed,
                 "filled": result.pullback_orders_filled,
+                "filled_at_resting_limit": result.pullback_orders_filled_at_limit,
+                "filled_gap_through_at_open": result.pullback_orders_gap_through,
+                "accepted_for_trade": result.pullback_orders_accepted,
+                "rejected_no_eligible_target_after_fill": result.pullback_orders_rejected_no_reference,
                 "expired_unfilled": result.pullback_orders_expired,
                 "cancelled_stop_breach_before_fill": result.pullback_orders_invalidated,
                 "rejected_by_min_first_target_rr_after_fill": result.pullback_orders_rejected_low_rr,
                 "still_pending_at_end_of_data": result.pullback_orders_unfilled_at_end,
+                "reconciliation": {
+                    "placed_equals_filled_plus_expired_plus_cancelled_plus_pending": result.pullback_orders_placed == (result.pullback_orders_filled + result.pullback_orders_expired + result.pullback_orders_invalidated + result.pullback_orders_unfilled_at_end),
+                    "filled_equals_accepted_plus_post_fill_rejections": result.pullback_orders_filled == (result.pullback_orders_accepted + result.pullback_orders_rejected_low_rr + result.pullback_orders_rejected_no_reference),
+                    "filled_equals_limit_fills_plus_gap_through_fills": result.pullback_orders_filled == (result.pullback_orders_filled_at_limit + result.pullback_orders_gap_through),
+                },
             },
             "candles_used": result.candles_used,
             "historical_fetch_window": fetch_window,
