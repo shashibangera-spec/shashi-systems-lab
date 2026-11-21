@@ -32,7 +32,7 @@ def test_base_url_is_exact_india_testnet_and_not_production_or_global():
 
 def test_signature_uses_get_timestamp_path_and_sorted_query():
     client = DeltaIndiaTestnetReadOnlyClient("key", "secret")
-    expected = hmac.new(b"secret", b"GET1700000000/v2/positionsproduct_id=27", hashlib.sha256).hexdigest()
+    expected = hmac.new(b"secret", b"GET1700000000/v2/positions?product_id=27", hashlib.sha256).hexdigest()
     with patch("shashi_engine.phase1j_testnet_readonly.time.time", return_value=1700000000):
         with patch.object(client._opener, "open") as mocked:
             response = type("Response", (), {
