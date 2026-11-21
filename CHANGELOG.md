@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Phase 1I: add optional `--stop-atr-multiplier` initial-stop padding (default `0` preserves the one-tick baseline); positive values place the stop the selected signal-candle ATR multiple beyond the signal candle extreme, rounded outward to the instrument tick. Entry and runner 1.0R gates recalculate from each variant's resulting stop. Add tests for 0, 0.25 and 0.50 multipliers; no other strategy rules change.
 - Phase 1I: add a diagnostic-only MAE/MFE script for the frozen 90-day BTCUSD window; re-fetch and validate all 4,320 public 30m candles, replay the unchanged rules, verify all 28 trades against the reference report, and report signal-ATR-normalized in-trade excursions, stop-candle breach size, and post-stop original-target recovery. No strategy rules or source reports are modified.
 - Phase 1I: add opt-in `--min-first-target-rr` entry eligibility filter (default off); record each rejected low-R:R setup with entry, stop, nearest AMT target, source and computed R:R in the JSON report and console output.
 - Phase 1I: add an optional minimum first-target R:R gate for fee-adjusted runner breakeven activation; the gate is activation-only, defaults to no gate for the always-breakeven comparator, and leaves entries, initial stops, targets and sizing unchanged.
