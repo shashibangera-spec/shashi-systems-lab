@@ -4,7 +4,7 @@ from decimal import Decimal
 import pytest
 
 from shashi_engine.amt_pa_backtest import (
-    BacktestConfig, Signal, _expected_funding_times, _target,
+    BacktestConfig, Signal, _expected_funding_times, _target, _initial_stop,
     compute_session_profile, run_backtest, session_date_for, _runner_breakeven_stop,
 )
 from shashi_engine.accounting import AccountingPolicy, FeeSchedule
@@ -354,3 +354,34 @@ def test_runner_breakeven_without_rr_gate_remains_always_on_after_partial(monkey
         target_price=Decimal("60000.99"), stop_price=Decimal("59999"),
     )
     assert trade.final_exit_reason == "RUNNER_FEE_ADJUSTED_BREAKEVEN"
+
+
+
+def test_stop_atr_multiplier_zero_preserves_one_tick_baseline():
+    bar = Candle(
+        "BTCUSD", "30m", datetime(2026, 11, 20, tzinfo=UTC),
+        Decimal("60050"), Decimal("60100"), Decimal("60000"), Decimal("60050"), Decimal("1"),
+    )
+    cfg = BacktestConfig(stop_atr_multiplier=Decimal("0"))
+    assert _initial_stop(bar, "long", Decimal("100"), instrument(), cfg) == Decimal("59999.50")
+    assert _initial_stop(bar, "short", Decimal("100"), instrument(), cfg) == Decimal("60100.50")
+
+
+def test_stop_atr_multiplier_025_and_050_are_tick_rounded_from_signal_extreme():
+    bar = Candle(
+        "BTCUSD", "30m", datetime(2026, 11, 20, tzinfo=UTC),
+        Decimal("60050"), Decimal("60100"), Decimal("60000"), Decimal("60050"), Decimal("1"),
+    )
+    cfg_025 = BacktestConfig(stop_atr_multiplier=Decimal("0.25"))
+    cfg_050 = BacktestConfig(stop_atr_multiplier=Decimal("0.50"))
+    assert _initial_stop(bar, "long", Decimal("100"), instrument(), cfg_025) == Decimal("59975.00")
+    assert _initial_stop(bar, "short", Decimal("100"), instrument(), cfg_025) == Decimal("60125.00")
+    assert _initial_stop(bar, "long", Decimal("100"), instrument(), cfg_050) == Decimal("59950.00")
+    assert _initial_stop(bar, "short", Decimal("100"), instrument(), cfg_050) == Decimal("60150.00")
+
+
+def test_stop_atr_multiplier_must_be_finite_and_nonnegative():
+    with pytest.raises(ValueError, match="stop_atr_multiplier"):
+        BacktestConfig(stop_atr_multiplier=Decimal("-0.01"))
+    with pytest.raises(ValueError, match="stop_atr_multiplier"):
+        BacktestConfig(stop_atr_multiplier=Decimal("NaN"))
