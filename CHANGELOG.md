@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Phase 1I: add an optional minimum first-target R:R gate for fee-adjusted runner breakeven activation; the gate is activation-only, defaults to no gate for the always-breakeven comparator, and leaves entries, initial stops, targets and sizing unchanged.
 - Phase 1I: add opt-in fee-adjusted runner breakeven after a completed-candle 50% target confirmation; activation begins on the following candle and includes runner entry/exit taker fees plus GST.
 - Phase 1I: make signal-bar start, signal-close boundary and next-bar entry-open timestamps explicit; correct runner lot reporting when no partial exit occurs.
 - Phase 1I: add a strict same-candle stop-first regression test and separate normal strategy-exit metrics from administrative end-of-data liquidations while preserving the all-trades summary.
