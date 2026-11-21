@@ -140,6 +140,14 @@ def main() -> int:
         "--min-first-target-rr", type=Decimal, default=None, metavar="R",
         help="skip entries whose nearest eligible prior-session AMT first target is below this R:R (e.g. 1.0); default off",
     )
+    parser.add_argument(
+        "--pullback-entry", action="store_true",
+        help="for Setup A only, rest a limit at the rejected prior-session VAH/VAL boundary instead of entering at the next open",
+    )
+    parser.add_argument(
+        "--pullback-limit-bars", type=int, default=3, metavar="BARS",
+        help="number of completed 30m candles after the signal during which the Setup A limit remains valid (default: 3)",
+    )
     args = parser.parse_args()
 
     try:
@@ -197,6 +205,8 @@ def main() -> int:
                 runner_breakeven_min_rr=args.runner_breakeven_min_rr,
                 min_first_target_rr=args.min_first_target_rr,
                 runner_next_amt_target=args.runner_next_amt_target,
+                pullback_entry=args.pullback_entry,
+                pullback_limit_bars=args.pullback_limit_bars,
             ),
             metadata_source="Delta India public product verifier",
         )
@@ -239,7 +249,24 @@ def main() -> int:
                 "minimum_first_target_rr": (
                     str(args.min_first_target_rr) if args.min_first_target_rr is not None else None
                 ),
-                "minimum_first_target_rr_gate_scope": "entry eligibility only; rejects signals below threshold after next-open entry price and nearest eligible prior-session AMT target are known",
+                "minimum_first_target_rr_gate_scope": (
+                    "entry eligibility only; uses actual pullback fill and nearest completed prior-session AMT target when pullback_entry is enabled; otherwise next-open entry"
+                ),
+                "pullback_entry_enabled": args.pullback_entry,
+                "pullback_limit_bars": args.pullback_limit_bars,
+                "pullback_entry_rule": (
+                    "Setup A only: submit after signal close at original prior-session VAL for longs or VAH for shorts; "
+                    "fill on first touch within next N completed 30m candles, at open if price gaps through the limit otherwise at limit; "
+                    "cancel if initial ATR stop is breached before fill; no chase; do not evaluate Target 1 on fill candle"
+                ),
+            },
+            "pullback_order_counts": {
+                "placed": result.pullback_orders_placed,
+                "filled": result.pullback_orders_filled,
+                "expired_unfilled": result.pullback_orders_expired,
+                "cancelled_stop_breach_before_fill": result.pullback_orders_invalidated,
+                "rejected_by_min_first_target_rr_after_fill": result.pullback_orders_rejected_low_rr,
+                "still_pending_at_end_of_data": result.pullback_orders_unfilled_at_end,
             },
             "candles_used": result.candles_used,
             "historical_fetch_window": fetch_window,
