@@ -47,6 +47,7 @@ class BacktestConfig:
     runner_breakeven_min_rr: Decimal | None = None
     min_first_target_rr: Decimal | None = None
     runner_next_amt_target: bool = False
+    runner_trail_atr_multiplier: Decimal | None = None
     pullback_entry: bool = False
     pullback_limit_bars: int = 3
     pullback_maker_entry: bool = False
@@ -79,6 +80,13 @@ class BacktestConfig:
             raise ValueError("min_first_target_rr must be a positive finite Decimal when supplied")
         if self.runner_next_amt_target and not self.runner_breakeven:
             raise ValueError("runner_next_amt_target requires runner_breakeven=True")
+        if self.runner_trail_atr_multiplier is not None:
+            if not self.runner_trail_atr_multiplier.is_finite() or self.runner_trail_atr_multiplier <= 0:
+                raise ValueError("runner_trail_atr_multiplier must be a positive finite Decimal")
+            if not self.runner_breakeven:
+                raise ValueError("runner_trail_atr_multiplier requires runner_breakeven=True")
+            if self.runner_next_amt_target:
+                raise ValueError("runner_trail_atr_multiplier and runner_next_amt_target are mutually exclusive")
         if self.pullback_limit_bars < 1:
             raise ValueError("pullback_limit_bars must be at least one")
 
@@ -432,6 +440,7 @@ def _close_trade(trade_id: int, signal: Signal, signal_candle_start_time: dateti
         complete, tuple(sorted(missing)),
         signal.next_target_price, signal.next_target_source,
         ("NEXT_AMT_TARGET_REACHED" if reason == "RUNNER_NEXT_AMT_TARGET" else
+         "ATR_TRAILING_STOP_EXIT" if reason == "RUNNER_ATR_TRAILING_STOP" else
          "NO_SECOND_REFERENCE_BE_BREAKEVEN_FALLBACK" if config.runner_next_amt_target and signal.next_target_price is None else
          "NEXT_AMT_TARGET_NOT_REACHED_BE_FALLBACK" if config.runner_next_amt_target else "RULE_DISABLED"),
     )
@@ -547,6 +556,9 @@ def run_backtest(candles: Sequence[Candle], instrument: Instrument, fee_schedule
                             "target": filled_signal.target_price, "partial_time": None,
                             "partial_price": None, "pending_exit": None,
                             "breakeven_activated": False,
+                            "highest_high_since_t1": None,
+                            "lowest_low_since_t1": None,
+                            "trail_stop_activated": False,
                         }
                         next_trade_id += 1
                         pullback_orders_accepted += 1
@@ -596,14 +608,36 @@ def run_backtest(candles: Sequence[Candle], instrument: Instrument, fee_schedule
                     )
                     active["breakeven_activated"] = True
 
+            # Trail from the previous completed candle only; effective this candle.
+            if (config.runner_trail_atr_multiplier is not None
+                and active["partial_time"] is not None
+                and active["breakeven_activated"]
+                and candle.start_time >= active["partial_time"]
+                and active["highest_high_since_t1"] is not None and i > 0):
+                atr_previous = _atr(ordered, i - 1, config.atr_period)
+                if atr_previous is not None:
+                    if signal.direction == "long":
+                        raw = active["highest_high_since_t1"] - config.runner_trail_atr_multiplier * atr_previous
+                        ticks = (raw / instrument.tick_size).to_integral_value(rounding="ROUND_FLOOR")
+                        active["stop"] = max(active["stop"], ticks * instrument.tick_size)
+                    else:
+                        raw = active["lowest_low_since_t1"] + config.runner_trail_atr_multiplier * atr_previous
+                        ticks = (raw / instrument.tick_size).to_integral_value(rounding="ROUND_CEILING")
+                        active["stop"] = min(active["stop"], ticks * instrument.tick_size)
+                    active["trail_stop_activated"] = True
+
             stop_hit = candle.low <= active["stop"] if signal.direction == "long" else candle.high >= active["stop"]
             if stop_hit:
+                gap_through = candle.open <= active["stop"] if signal.direction == "long" else candle.open >= active["stop"]
+                stop_fill = candle.open if gap_through else active["stop"]
+                stop_reason = ("RUNNER_ATR_TRAILING_STOP" if active["trail_stop_activated"]
+                               else "RUNNER_FEE_ADJUSTED_BREAKEVEN" if active["breakeven_activated"]
+                               else "INITIAL_PROTECTIVE_STOP")
                 trades.append(_close_trade(
                     int(active["trade_id"]), signal, ordered[signal.index].start_time,
                     ordered[signal.index].end_time, active["entry_time"], active["entry_price"], active["entry_liquidity"], active["partial_time"],
-                    active["partial_price"], candle.start_time, active["stop"],
-                    ("RUNNER_FEE_ADJUSTED_BREAKEVEN" if active["breakeven_activated"]
-                     else "INITIAL_PROTECTIVE_STOP"), config, instrument, fee_schedule,
+                    active["partial_price"], candle.start_time, stop_fill,
+                    stop_reason, config, instrument, fee_schedule,
                     accounting_policy, funding_events, metadata_source,
                 ))
                 active = None
@@ -632,6 +666,12 @@ def run_backtest(candles: Sequence[Candle], instrument: Instrument, fee_schedule
                     # Intrabar touch is known only from this completed candle; time is its close.
                     active["partial_time"] = candle.end_time
                     active["partial_price"] = active["target"]
+                    if config.runner_trail_atr_multiplier is not None:
+                        active["highest_high_since_t1"] = candle.high
+                        active["lowest_low_since_t1"] = candle.low
+            elif config.runner_trail_atr_multiplier is not None and active["partial_time"] is not None:
+                active["highest_high_since_t1"] = max(active["highest_high_since_t1"], candle.high)
+                active["lowest_low_since_t1"] = min(active["lowest_low_since_t1"], candle.low)
 
             # Require two completed closes after entry across the original thesis level.
             if i > int(active["entry_index"]):
@@ -712,6 +752,8 @@ def run_backtest(candles: Sequence[Candle], instrument: Instrument, fee_schedule
                 "entry_liquidity": "taker", "stop": signal.stop_price, "target": signal.target_price,
                 "partial_time": None, "partial_price": None, "pending_exit": None,
                 "breakeven_activated": False,
+                "highest_high_since_t1": None, "lowest_low_since_t1": None,
+                "trail_stop_activated": False,
             }
             next_trade_id += 1
 
