@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+- Phase 1I: make signal-bar start, signal-close boundary and next-bar entry-open timestamps explicit; correct runner lot reporting when no partial exit occurs.
+- Phase 1I: add a strict same-candle stop-first regression test and separate normal strategy-exit metrics from administrative end-of-data liquidations while preserving the all-trades summary.
 - Phase 1I: add a bounded public Delta REST historical fetch option for 1–90 complete 05:30 IST sessions; verify exact candle coverage and keep the append-only recorder JSONL untouched.
 - Phase 1I: add offline Delta India BTCUSD perpetual 30m AMT + Price Action research backtester.
 - Reuse the Phase 1B public candle/product metadata adapters and Phase 1E Decimal accounting for fees, GST and explicit 8-hour funding events.
