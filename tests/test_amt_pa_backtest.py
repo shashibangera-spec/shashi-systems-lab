@@ -210,7 +210,7 @@ def test_runner_breakeven_activates_only_after_partial_confirmation_on_next_cand
     )
     next_bar = Candle(
         "BTCUSD", "30m", bars[15].start_time, Decimal("60000"),
-        Decimal("60070"), Decimal("60030"), Decimal("60040"), Decimal("1"),
+        Decimal("60070"), Decimal("60000"), Decimal("60040"), Decimal("1"),
     )
     trade, _ = _run_with_injected_signal(
         monkeypatch, target_bar, [next_bar], BacktestConfig(runner_breakeven=True)
