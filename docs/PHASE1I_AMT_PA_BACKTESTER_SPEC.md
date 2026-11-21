@@ -71,7 +71,7 @@ Only one position is allowed at a time. Signal is known at the signal candle clo
 - First target: nearest eligible fixed historical AMT level ahead of entry.
 - When target is touched, close 50% at the target level; target touch is simulated as a taker fill for conservative fee treatment.
 - Keep the initial stop on the runner; no automatic breakeven or trailing stop in the baseline.
-- If stop and target are both touched in one candle, stop is assumed first; no partial is credited.
+- On every post-entry candle, evaluate the protective stop before evaluating the first target. If both are touched in the same candle, the stop closes the full still-open position first and no partial is credited. A target recorded at a candle's end boundary and a stop recorded at the next candle's start boundary can share a timestamp while belonging to two different adjacent candles.
 - Target-touch time is recorded as the completed candle's end timestamp because OHLC candles do not reveal the exact intrabar touch time.
 - Remaining 50% exits on confirmed structural invalidation, initial stop, or end-of-data close. End-of-data is an administrative backtest close, not a strategy time exit.
 
@@ -103,7 +103,7 @@ For a long, two consecutive completed candles after entry closing below the setu
 
 Report per trade: setup, side, signal/entry timestamps, entry, thesis level, stop, first target and source, partial timestamp/price, final exit timestamp/price/reason, lots, gross USD PnL, fees and GST, funding cash flow, fees-only net, net including funding (only if complete), and missing funding events.
 
-Summary: trades, gross and net results, fees, funding completeness, win rate, profit factor, drawdown in USD, skipped no-reference/invalid-stop counts and AMT profile count.
+Summary: preserve the overall all-trades metrics and separately report `strategy_exits_excluding_end_of_data` (normal stop/structural exits only), `end_of_data_liquidations` (administrative final-bar closes only), and `all_trades_including_end_of_data`. Each group reports trade count, gross/net P&L, fees/GST, funding completeness, win rate, profit factor and drawdown. End-of-data liquidation is not presented as a normal strategy exit. Per-trade reporting includes `signal_candle_start_time`, `signal_time` (signal bar close boundary), and `entry_time` (next bar open boundary).
 
 Acceptance requires full test suite, exact PR-head CI green, deterministic synthetic tests for profile/entries/exits/partial accounting/funding gaps/stop-first, no secrets or local recordings committed, and user Windows acceptance. PR remains open and unmerged until separate explicit merge approval.
 
