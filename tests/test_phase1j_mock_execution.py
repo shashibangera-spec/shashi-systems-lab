@@ -232,7 +232,7 @@ def test_duplicate_intent_cannot_be_reused():
 
 def test_unknown_submission_outcome_transitions_to_reconciliation_only():
     machine = ready_machine()
-    machine.transition(State.SIGNAL_PENDING)
+    assert machine.permit_entry("unknown-submit", Exposure(0, 0), pnl(), True, True)
     machine.transition(State.ENTRY_WORKING)
     machine.mark_submission_unknown()
     assert machine.state is State.SUBMISSION_UNKNOWN
@@ -281,3 +281,16 @@ def test_startup_reconciliation_enforces_aggregate_two_lot_cap():
         exchange_live_entry_lots=1,
     ))
     assert machine.state is State.RECONCILIATION_BLOCKED
+
+
+
+def test_signal_pending_cannot_be_entered_without_entry_guard():
+    machine = ready_machine()
+    with pytest.raises(SafetyError, match="permit_entry"):
+        machine.transition(State.SIGNAL_PENDING)
+
+
+def test_non_decimal_pnl_component_fails_closed():
+    latch = DailyLossLatch("session-1")
+    invalid = SessionPnl(0.0, Decimal("0"), Decimal("0"), Decimal("0"))  # type: ignore[arg-type]
+    assert latch.evaluate(invalid)
