@@ -1,6 +1,6 @@
 # Phase 1J — Delta Exchange India Testnet Execution Safety Specification
 
-**Status:** Approved safety specification; mock-only implementation in progress  
+**Status:** Approved safety specification; mock-only implementation added; test execution pending  
 **Phase:** 1J  
 **Branch:** `phase1j-testnet-execution-spec`  
 **Base:** `main` at Phase 1I merge commit `842c5e25b7335ff84af279d611b73c0e74c95911`  
