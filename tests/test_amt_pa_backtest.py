@@ -657,3 +657,71 @@ def test_pullback_maker_flag_charges_maker_only_for_resting_limit_fill(monkeypat
     assert maker.pullback_orders_filled == maker.pullback_orders_accepted + maker.pullback_orders_rejected_low_rr + maker.pullback_orders_rejected_no_reference
 
 
+
+
+def test_runner_atr_trail_ratchets_after_t1_and_exits_at_trailing_stop(monkeypatch):
+    from shashi_engine.amt_pa_backtest import _atr
+
+    bars = session_candles(date(2026, 11, 20))
+    entry_bar = Candle(
+        "BTCUSD", "30m", bars[14].start_time, Decimal("60000"),
+        Decimal("60020"), Decimal("59990"), Decimal("60010"), Decimal("1"),
+    )
+    partial_bar = Candle(
+        "BTCUSD", "30m", bars[15].start_time, Decimal("60010"),
+        Decimal("61000"), Decimal("60000"), Decimal("60950"), Decimal("1"),
+    )
+    trail_hit_bar = Candle(
+        "BTCUSD", "30m", bars[16].start_time, Decimal("60900"),
+        Decimal("60950"), Decimal("60500"), Decimal("60700"), Decimal("1"),
+    )
+    trade, ordered = _run_with_injected_signal(
+        monkeypatch, entry_bar, [partial_bar, trail_hit_bar],
+        BacktestConfig(runner_breakeven=True, runner_trail_atr_multiplier=Decimal("2.0")),
+        target_price=Decimal("60050"), stop_price=Decimal("59900"),
+    )
+    atr_at_partial = _atr(ordered, 15, 14)
+    assert atr_at_partial is not None
+    raw_trail = Decimal("61000") - Decimal("2.0") * atr_at_partial
+    expected = (raw_trail / Decimal("0.50")).to_integral_value(rounding="ROUND_FLOOR") * Decimal("0.50")
+    assert trade.partial_exit_time == partial_bar.end_time
+    assert trade.final_exit_reason == "RUNNER_ATR_TRAILING_STOP"
+    assert trade.final_exit_price == expected
+    assert trade.final_exit_time == trail_hit_bar.start_time
+    assert trade.final_exit_price > Decimal("60000")
+
+
+def test_runner_atr_trail_gap_through_fills_at_open_and_be_is_floor(monkeypatch):
+    bars = session_candles(date(2026, 11, 20))
+    entry_bar = Candle(
+        "BTCUSD", "30m", bars[14].start_time, Decimal("60000"),
+        Decimal("60020"), Decimal("59990"), Decimal("60010"), Decimal("1"),
+    )
+    partial_bar = Candle(
+        "BTCUSD", "30m", bars[15].start_time, Decimal("60010"),
+        Decimal("61000"), Decimal("60000"), Decimal("60950"), Decimal("1"),
+    )
+    gap_bar = Candle(
+        "BTCUSD", "30m", bars[16].start_time, Decimal("60500"),
+        Decimal("60600"), Decimal("60400"), Decimal("60550"), Decimal("1"),
+    )
+    trade, ordered = _run_with_injected_signal(
+        monkeypatch, entry_bar, [partial_bar, gap_bar],
+        BacktestConfig(runner_breakeven=True, runner_trail_atr_multiplier=Decimal("2.0")),
+        target_price=Decimal("60050"), stop_price=Decimal("59900"),
+    )
+    assert trade.final_exit_reason == "RUNNER_ATR_TRAILING_STOP"
+    assert trade.final_exit_time == gap_bar.start_time
+    assert trade.final_exit_price == gap_bar.open
+
+
+def test_runner_atr_trail_requires_breakeven_and_excludes_next_amt_target():
+    with pytest.raises(ValueError, match="requires runner_breakeven"):
+        BacktestConfig(runner_trail_atr_multiplier=Decimal("2.0"))
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        BacktestConfig(
+            runner_breakeven=True, runner_next_amt_target=True,
+            runner_trail_atr_multiplier=Decimal("2.0"),
+        )
+    with pytest.raises(ValueError, match="positive finite"):
+        BacktestConfig(runner_breakeven=True, runner_trail_atr_multiplier=Decimal("0"))
