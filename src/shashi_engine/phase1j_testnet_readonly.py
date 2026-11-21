@@ -129,7 +129,7 @@ class DeltaIndiaTestnetReadOnlyClient:
         return self._get(POSITIONS_PATH, {"product_id": str(PRODUCT_ID)})
 
     def get_open_orders(self):
-        return self._get(ORDERS_PATH, {"product_id": str(PRODUCT_ID)})
+        return self._get(ORDERS_PATH, {"product_ids": str(PRODUCT_ID)})
 
     def get_fills(self):
         return self._get(FILLS_PATH, {"product_ids": str(PRODUCT_ID)})
