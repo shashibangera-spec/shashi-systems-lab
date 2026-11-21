@@ -270,7 +270,7 @@ def main() -> int:
                     str(args.min_first_target_rr) if args.min_first_target_rr is not None else None
                 ),
                 "minimum_first_target_rr_gate_scope": (
-                    "entry eligibility only; uses actual pullback fill and nearest completed prior-session AMT target when pullback_entry is enabled; otherwise next-open entry"
+                    "entry eligibility only; for Setup A pullback orders, screened before placement using resting limit, signal-derived stop and signal-close AMT target; gap-through fills are at a better price; otherwise next-open entry"
                 ),
                 "pullback_entry_enabled": args.pullback_entry,
                 "pullback_limit_bars": args.pullback_limit_bars,
