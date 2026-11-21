@@ -133,6 +133,10 @@ def main() -> int:
         help="optional minimum first-target R:R for runner breakeven activation only (e.g. 1.0); omit for all partials",
     )
     parser.add_argument(
+        "--runner-next-amt-target", action="store_true",
+        help="after Target 1 partial, close the runner at the next completed prior-session AMT reference; requires --runner-breakeven",
+    )
+    parser.add_argument(
         "--min-first-target-rr", type=Decimal, default=None, metavar="R",
         help="skip entries whose nearest eligible prior-session AMT first target is below this R:R (e.g. 1.0); default off",
     )
@@ -192,6 +196,7 @@ def main() -> int:
                 runner_breakeven=args.runner_breakeven,
                 runner_breakeven_min_rr=args.runner_breakeven_min_rr,
                 min_first_target_rr=args.min_first_target_rr,
+                runner_next_amt_target=args.runner_next_amt_target,
             ),
             metadata_source="Delta India public product verifier",
         )
@@ -229,6 +234,8 @@ def main() -> int:
                 "runner_breakeven_gate_scope": "activation only; no effect on entry eligibility, initial stop, target or sizing",
                 "runner_breakeven_activation": "next candle after completed-candle partial confirmation, if optional R:R gate passes",
                 "runner_breakeven_fee_basis": "remaining runner entry taker fee + exit taker fee, both including GST",
+                "runner_next_amt_target_enabled": args.runner_next_amt_target,
+                "runner_next_amt_target_rule": "nearest completed prior-session VAH/POC/VAL strictly beyond first_target; stop-first; evaluated from candle after partial confirmation; no second reference retains fee-adjusted breakeven fallback",
                 "minimum_first_target_rr": (
                     str(args.min_first_target_rr) if args.min_first_target_rr is not None else None
                 ),
