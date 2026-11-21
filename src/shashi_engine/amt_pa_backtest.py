@@ -43,6 +43,7 @@ class BacktestConfig:
     position_lots: int = 2
     stop_pad_ticks: int = 1
     runner_breakeven: bool = False
+    runner_breakeven_min_rr: Decimal | None = None
 
     def __post_init__(self) -> None:
         if not self.row_size.is_finite() or self.row_size <= 0:
@@ -59,6 +60,10 @@ class BacktestConfig:
             raise ValueError("position_lots must be an even whole number >= 2 for a 50% partial")
         if self.stop_pad_ticks < 1:
             raise ValueError("stop_pad_ticks must be at least one tick")
+        if self.runner_breakeven_min_rr is not None and (
+            not self.runner_breakeven_min_rr.is_finite() or self.runner_breakeven_min_rr <= 0
+        ):
+            raise ValueError("runner_breakeven_min_rr must be a positive finite Decimal when supplied")
 
 
 @dataclass(frozen=True, slots=True)
@@ -389,15 +394,25 @@ def run_backtest(candles: Sequence[Candle], instrument: Instrument, fee_schedule
                 active = None
                 continue
 
-            # A partial is confirmed only at the completed candle boundary. Activate
-            # the fee-adjusted runner stop from the following candle, never retroactively.
+            # A partial is confirmed only at the completed candle boundary. The optional
+            # first-target R:R gate affects only runner-stop activation, never entry eligibility.
+            # Activation begins on the following candle; no retroactive same-candle stop.
             if (config.runner_breakeven and active["partial_time"] is not None
                 and not active["breakeven_activated"]
                 and candle.start_time >= active["partial_time"]):
-                active["stop"] = _runner_breakeven_stop(
-                    active["entry_price"], signal.direction, fee_schedule, instrument.tick_size
+                first_target_rr = (
+                    abs(active["target"] - active["entry_price"])
+                    / abs(active["entry_price"] - signal.stop_price)
                 )
-                active["breakeven_activated"] = True
+                rr_gate_passed = (
+                    config.runner_breakeven_min_rr is None
+                    or first_target_rr >= config.runner_breakeven_min_rr
+                )
+                if rr_gate_passed:
+                    active["stop"] = _runner_breakeven_stop(
+                        active["entry_price"], signal.direction, fee_schedule, instrument.tick_size
+                    )
+                    active["breakeven_activated"] = True
 
             stop_hit = candle.low <= active["stop"] if signal.direction == "long" else candle.high >= active["stop"]
             if stop_hit:
