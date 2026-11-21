@@ -263,6 +263,75 @@ class DurableSafetyStore:
         except sqlite3.Error as exc:
             raise PersistenceError(f"could not persist daily loss latch: {exc}") from exc
 
+    def evaluate_daily_loss(
+        self,
+        session_id: str,
+        realized_usd: Decimal | None,
+        unrealized_usd: Decimal | None,
+        fees_usd: Decimal | None,
+        funding_usd: Decimal | None,
+    ) -> PersistedSessionRisk:
+        """Persist the fixed-limit evaluation; missing/invalid inputs latch fail-closed."""
+        if not session_id.strip():
+            raise ValueError("session_id is required")
+        values = (realized_usd, unrealized_usd, fees_usd, funding_usd)
+        valid = all(
+            isinstance(value, Decimal) and value.is_finite()
+            for value in values
+        )
+        net: Decimal | None = None
+        if valid:
+            assert realized_usd is not None and unrealized_usd is not None
+            assert fees_usd is not None and funding_usd is not None
+            net = realized_usd + unrealized_usd - fees_usd + funding_usd
+        reason = None
+        if not valid:
+            reason = "P_AND_L_COMPONENT_MISSING_OR_INVALID"
+        elif net is not None and net <= -DAILY_LOSS_LIMIT_USD:
+            reason = "DAILY_LOSS_LIMIT_REACHED"
+        try:
+            with self._connect() as conn:
+                row = conn.execute(
+                    "SELECT * FROM session_risk WHERE session_id=?", (session_id,)
+                ).fetchone()
+                if row is None:
+                    conn.execute(
+                        """INSERT INTO session_risk
+                           (session_id, limit_usd, latched, reason, updated_at)
+                           VALUES (?, '2.50', 0, NULL, ?)""",
+                        (session_id, _utc_now()),
+                    )
+                if reason is not None:
+                    row = conn.execute(
+                        "SELECT latched FROM session_risk WHERE session_id=?", (session_id,)
+                    ).fetchone()
+                    if not row["latched"]:
+                        conn.execute(
+                            """UPDATE session_risk SET latched=1, reason=?, updated_at=?
+                               WHERE session_id=?""",
+                            (reason, _utc_now(), session_id),
+                        )
+                        self._append_audit_tx(
+                            conn, "DAILY_LOSS_LATCHED",
+                            {"session_id": session_id, "limit_usd": "2.50",
+                             "reason": reason, "net_pnl_usd": str(net) if net is not None else None},
+                        )
+                else:
+                    self._append_audit_tx(
+                        conn, "DAILY_LOSS_EVALUATED",
+                        {"session_id": session_id, "limit_usd": "2.50",
+                         "net_pnl_usd": str(net), "latched": False},
+                    )
+                row = conn.execute(
+                    "SELECT * FROM session_risk WHERE session_id=?", (session_id,)
+                ).fetchone()
+            return PersistedSessionRisk(
+                row["session_id"], Decimal(row["limit_usd"]), bool(row["latched"]),
+                row["reason"], row["updated_at"],
+            )
+        except sqlite3.Error as exc:
+            raise PersistenceError(f"could not persist daily loss evaluation: {exc}") from exc
+
     def get_session_risk(self, session_id: str) -> PersistedSessionRisk | None:
         try:
             with self._connect() as conn:
