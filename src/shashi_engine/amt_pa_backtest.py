@@ -241,6 +241,23 @@ def _rejection_ok(candle: Candle, direction: Direction, config: BacktestConfig, 
     return wick >= config.rejection_wick_body_ratio * max(body, tick) and close_location >= config.rejection_close_fraction
 
 
+def _initial_stop(candle: Candle, direction: Direction, atr: Decimal,
+                  instrument: Instrument, config: BacktestConfig) -> Decimal:
+    """Place the stop beyond the signal extreme; zero multiplier preserves tick padding."""
+    pad = (
+        instrument.tick_size * config.stop_pad_ticks
+        if config.stop_atr_multiplier == 0
+        else atr * config.stop_atr_multiplier
+    )
+    if direction == "long":
+        raw = candle.low - pad
+        ticks = (raw / instrument.tick_size).to_integral_value(rounding="ROUND_FLOOR")
+    else:
+        raw = candle.high + pad
+        ticks = (raw / instrument.tick_size).to_integral_value(rounding="ROUND_CEILING")
+    return ticks * instrument.tick_size
+
+
 def _signal_at(candles: Sequence[Candle], index: int, profiles: dict[date, SessionProfile],
                instrument: Instrument, config: BacktestConfig) -> tuple[Signal | None, bool]:
     candle = candles[index]
